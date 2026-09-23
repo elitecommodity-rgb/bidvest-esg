@@ -113,27 +113,28 @@ def init_db():
     )
     db.commit()
 
-    cur = db.execute("SELECT COUNT(*) AS c FROM checklist_items")
-    if cur.fetchone()["c"] == 0:
-        with open(CHECKLIST_JSON) as f:
-            items = json.load(f)
-        for idx, item in enumerate(items):
-            db.execute(
-                """INSERT INTO checklist_items
-                   (id, pillar, category, data_point, unit, frequency, typical_source, framework_ref, sort_order)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    item["id"], item["pillar"], item["category"], item["data_point"],
-                    item.get("unit"), item.get("frequency"), item.get("typical_source"),
-                    item.get("framework_ref"), idx,
-                ),
-            )
-            db.execute(
-                """INSERT OR IGNORE INTO capture_records (item_id, status, updated_at)
-                   VALUES (?, 'Not started', ?)""",
-                (item["id"], datetime.now(timezone.utc).isoformat()),
-            )
-        db.commit()
+    # Seed checklist items idempotently. Multiple gunicorn workers can call
+    # init_db() concurrently on first boot (same fresh sqlite file) — use
+    # INSERT OR IGNORE everywhere here so a race never raises IntegrityError.
+    with open(CHECKLIST_JSON) as f:
+        items = json.load(f)
+    for idx, item in enumerate(items):
+        db.execute(
+            """INSERT OR IGNORE INTO checklist_items
+               (id, pillar, category, data_point, unit, frequency, typical_source, framework_ref, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                item["id"], item["pillar"], item["category"], item["data_point"],
+                item.get("unit"), item.get("frequency"), item.get("typical_source"),
+                item.get("framework_ref"), idx,
+            ),
+        )
+        db.execute(
+            """INSERT OR IGNORE INTO capture_records (item_id, status, updated_at)
+               VALUES (?, 'Not started', ?)""",
+            (item["id"], datetime.now(timezone.utc).isoformat()),
+        )
+    db.commit()
 
     cur = db.execute("SELECT COUNT(*) AS c FROM owners")
     if cur.fetchone()["c"] == 0:
