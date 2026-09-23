@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bidvest ESG</title>
+<style>
+  :root{
+    /* Bidvest Group brand palette: Bunting (deep navy), Shakespeare (blue), Antique Brass (accent) */
+    --navy:#141549; --navy2:#4a99d1; --gold:#c9896d; --green:#1f8a4c;
+    --amber:#c98a12; --red:#c0392b; --grey:#6b7280; --bg:#f4f6f9; --card:#ffffff;
+    --border:#e2e6ec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#1a1f2b;}
+  header{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+  header .brand{display:flex;align-items:center;gap:12px;}
+  header .brand .dot{width:12px;height:12px;border-radius:50%;background:var(--gold);}
+  header h1{font-size:19px;margin:0;font-weight:600;letter-spacing:.2px;}
+  header .sub{font-size:12px;opacity:.8;}
+  header .who{font-size:13px;display:flex;align-items:center;gap:12px;}
+  header button{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;}
+  header button:hover{background:rgba(255,255,255,.22);}
+
+  #login-screen{max-width:380px;margin:80px auto;background:var(--card);padding:32px;border-radius:12px;box-shadow:0 8px 30px rgba(10,20,40,.08);}
+  #login-screen h2{margin-top:0;color:var(--navy);}
+  #login-screen input{width:100%;padding:10px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:6px;font-size:14px;}
+  #login-screen button{width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;}
+  #login-screen button:hover{background:var(--navy2);}
+  #login-error{color:var(--red);font-size:13px;margin-bottom:10px;min-height:16px;}
+  #login-hint{font-size:11px;color:var(--grey);margin-top:14px;line-height:1.5;}
+
+  main{max-width:1180px;margin:0 auto;padding:20px 24px 60px;}
+  .tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+  .tab{padding:9px 16px;border-radius:20px;background:var(--card);border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:500;color:var(--navy);}
+  .tab.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .tab .count{opacity:.7;font-size:11px;margin-left:4px;}
+
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+  .toolbar input[type=search]{padding:8px 12px;border:1px solid var(--border);border-radius:6px;min-width:220px;font-size:13px;}
+  .toolbar .actions{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-size:13px;color:var(--navy);font-weight:500;}
+  .btn:hover{border-color:var(--navy);}
+  .btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .btn.primary:hover{background:var(--navy2);}
+
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px;}
+  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+  .stat-card .label{font-size:11px;color:var(--grey);text-transform:uppercase;letter-spacing:.4px;}
+  .stat-card .value{font-size:26px;font-weight:700;color:var(--navy);margin-top:4px;}
+  .bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:8px;}
+  .bar > div{height:100%;background:var(--green);}
+
+  .category-group{margin-bottom:22px;}
+  .category-group h3{font-size:13px;color:var(--grey);text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px 2px;}
+
+  .item-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+  .item-card .item-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer;}
+  .item-head .idbadge{font-size:11px;color:#fff;background:var(--navy2);padding:2px 7px;border-radius:4px;font-weight:600;margin-right:8px;}
+  .item-head .dp{font-size:14px;font-weight:600;color:#1a1f2b;}
+  .item-head .meta{font-size:11.5px;color:var(--grey);margin-top:3px;}
+  .status-pill{font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;white-space:nowrap;}
+  .status-Not-started{background:#eceff3;color:#5b6472;}
+  .status-In-progress{background:#fdf1d8;color:var(--amber);}
+  .status-Collected{background:#e2f3e8;color:var(--green);}
+  .status-Verified{background:#dcefe0;color:#146c38;border:1px solid #146c38;}
+  .status-N-A{background:#f0f0f0;color:#999;}
+
+  .item-body{display:none;margin-top:14px;padding-top:12px;border-top:1px dashed var(--border);}
+  .item-card.open .item-body{display:block;}
+  .field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px;}
+  .field-row label{font-size:11px;color:var(--grey);display:block;margin-bottom:4px;}
+  .field-row select, .field-row input, .field-row textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;}
+  textarea{resize:vertical;min-height:38px;}
+
+  .evidence-box{margin-top:10px;}
+  .evidence-list{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;}
+  .evidence-chip{background:#f0f3f8;border:1px solid var(--border);border-radius:14px;padding:4px 10px;font-size:12px;display:flex;align-items:center;gap:6px;}
+  .evidence-chip a{color:var(--navy2);text-decoration:none;}
+  .evidence-chip .del{cursor:pointer;color:var(--red);font-weight:700;}
+  .upload-row{display:flex;gap:8px;align-items:center;}
+  .upload-row input[type=file]{font-size:12px;}
+  .save-row{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;}
+  .save-msg{font-size:12px;color:var(--green);align-self:center;}
+
+  .source-note{font-size:11.5px;color:var(--grey);margin-top:8px;background:#f8f9fb;padding:8px 10px;border-radius:6px;}
+  .framework-tag{display:inline-block;background:#eef1f6;color:#5b6472;font-size:10.5px;padding:2px 6px;border-radius:4px;margin-top:4px;}
+
+  #freq-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px;}
+  #freq-table th,#freq-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);}
+
+  .hidden{display:none !important;}
+  @media (max-width:640px){ header{padding:14px;} main{padding:14px;} }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <h2>Bidvest ESG</h2>
+  <p style="font-size:13px;color:#6b7280;margin-top:-6px;">ESG data checklist &amp; evidence capture</p>
+  <div id="login-error"></div>
+  <input id="login-name" type="text" placeholder="Your name (e.g. Site Manager - Centurion)">
+  <input id="login-password" type="password" placeholder="Password">
+  <button onclick="doLogin()">Log in</button>
+  <div id="login-hint"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div class="brand">
+      <div class="dot"></div>
+      <div>
+        <h1>Bidvest ESG</h1>
+        <div class="sub">ESG data checklist &amp; evidence capture</div>
+      </div>
+    </div>
+    <div class="who">
+      <span id="who-name"></span>
+      <button onclick="exportXlsx()">Export .xlsx</button>
+      <button onclick="doLogout()">Log out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <div class="tabs" id="pillar-tabs"></div>
+
+    <div class="toolbar">
+      <input type="search" id="search-box" placeholder="Search data points, categories, IDs..." oninput="render()">
+      <div class="actions">
+        <select id="status-filter" onchange="render()">
+          <option value="">All statuses</option>
+          <option>Not started</option>
+          <option>In progress</option>
+          <option>Collected</option>
+          <option>Verified</option>
+          <option>N/A</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="admin-panel" class="hidden" style="margin-bottom:20px;">
+      <div class="stat-card" style="max-width:100%;">
+        <div class="label">Collection workload by frequency</div>
+        <table id="freq-table"></table>
+      </div>
+    </div>
+
+    <div id="items-container"></div>
+  </main>
+</div>
+
+<script>
+let STATE = { role: null, name: null, items: [], owners: [], pillar: 'All', summary: null };
+
+async function api(path, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  if (opts.body && !(opts.body instanceof FormData)) {
+    opts.headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(path, opts);
+  if (res.status === 401) { showLogin(); throw new Error('unauth'); }
+  if (!res.ok) { const t = await res.json().catch(()=>({error:res.statusText})); throw new Error(t.error||res.statusText); }
+  return res.headers.get('content-type')?.includes('application/json') ? res.json() : res;
+}
+
+function showLogin(){
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+function showApp(){
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+
+async function doLogin(){
+  const name = document.getElementById('login-name').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errBox = document.getElementById('login-error');
+  errBox.textContent = '';
+  try {
+    const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, password})});
+    const data = await res.json();
+    if (!res.ok) { errBox.textContent = data.error || 'Login failed'; return; }
+    STATE.role = data.role; STATE.name = data.name;
+    await boot();
+  } catch(e){ errBox.textContent = 'Could not reach server.'; }
+}
+
+async function doLogout(){
+  await api('/api/logout', {method:'POST'});
+  location.reload();
+}
+
+async function boot(){
+  showApp();
+  document.getElementById('who-name').textContent = STATE.name + (STATE.role==='admin' ? ' · ESG Owner' : ' · Team');
+  document.getElementById('admin-panel').classList.toggle('hidden', STATE.role !== 'admin');
+  await Promise.all([loadItems(), loadOwners(), loadSummary()]);
+  renderTabs();
+  render();
+}
+
+async function loadItems(){ STATE.items = await api('/api/checklist'); }
+async function loadOwners(){ STATE.owners = await api('/api/owners'); }
+async function loadSummary(){ STATE.summary = await api('/api/summary'); renderSummary(); }
+
+function renderSummary(){
+  const s = STATE.summary;
+  if (!s) return;
+  const grid = document.getElementById('summary-grid');
+  const cards = [
+    {label:'Overall complete', value: s.total.pct_complete + '%', bar: s.total.pct_complete},
+    {label:'Data points', value: s.total_items},
+    {label:'Collected', value: s.total.Collected},
+    {label:'Verified', value: s.total.Verified},
+    {label:'With evidence on file', value: s.items_with_evidence + ' / ' + s.total_items},
+  ];
+  grid.innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      ${c.bar!==undefined ? `<div class="bar"><div style="width:${c.bar}%"></div></div>` : ''}
+    </div>`).join('');
+
+  const freqTable = document.getElementById('freq-table');
+  freqTable.innerHTML = '<tr><th>Frequency</th><th>Data points</th><th>Not yet collected</th></tr>' +
+    s.frequency.map(f => `<tr><td>${f.frequency}</td><td>${f.data_points}</td><td>${f.not_yet_collected}</td></tr>`).join('');
+}
+
+function renderTabs(){
+  const pillars = ['All', ...new Set(STATE.items.map(i=>i.pillar))];
+  const tabs = document.getElementById('pillar-tabs');
+  tabs.innerHTML = pillars.map(p => {
+    const count = p==='All' ? STATE.items.length : STATE.items.filter(i=>i.pillar===p).length;
+    return `<div class="tab ${p===STATE.pillar?'active':''}" onclick="setPillar('${p}')">${p} <span class="count">${count}</span></div>`;
+  }).join('');
+}
+
+function setPillar(p){ STATE.pillar = p; renderTabs(); render(); }
+
+function statusClass(s){ return 'status-' + (s||'Not started').replace(/[^A-Za-z]/g,'-'); }
+
+function render(){
+  const q = document.getElementById('search-box').value.toLowerCase();
+  const statusFilter = document.getElementById('status-filter').value;
+  let items = STATE.items;
+  if (STATE.pillar !== 'All') items = items.filter(i => i.pillar === STATE.pillar);
+  if (statusFilter) items = items.filter(i => (i.status||'Not started') === statusFilter);
+  if (q) items = items.filter(i => (i.data_point+' '+i.category+' '+i.id).toLowerCase().includes(q));
+
+  const byCategory = {};
+  items.forEach(i => { (byCategory[i.category] = byCategory[i.category]||[]).push(i); });
+
+  const container = document.getElementById('items-container');
+  if (items.length === 0) { container.innerHTML = '<p style="color:#6b7280;">No matching data points.</p>'; return; }
+
+  container.innerHTML = Object.entries(byCategory).map(([cat, list]) => `
+    <div class="category-group">
+      <h3>${cat}</h3>
+      ${list.map(itemCardHtml).join('')}
+    </div>
+  `).join('');
+}
+
+function itemCardHtml(item){
+  const ownerOptions = STATE.owners.map(o => `<option ${o===item.owner?'selected':''}>${o}</option>`).join('');
+  return `
+  <div class="item-card" id="card-${item.id}">
+    <div class="item-head" onclick="toggleCard('${item.id}')">
+      <div>
+        <div><span class="idbadge">${item.id}</span><span class="dp">${item.data_point}</span></div>
+        <div class="meta">${item.unit || ''} &middot; ${item.frequency || ''} &middot; ${item.evidence_count} file${item.evidence_count===1?'':'s'}</div>
+      </div>
+      <span class="status-pill ${statusClass(item.status)}">${item.status || 'Not started'}</span>
+    </div>
+    <div class="item-body">
+      <div class="field-row">
+        <div>
+          <label>Status</label>
+          <select id="status-${item.id}">
+            ${['Not started','In progress','Collected','Verified','N/A'].map(s=>`<option ${s===item.status?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Owner</label>
+          <select id="owner-${item.id}"><option value="">—</option>${ownerOptions}</select>
+        </div>
+        <div>
+          <label>Latest value</label>
+          <input id="value-${item.id}" type="text" value="${item.latest_value ? item.latest_value.replace(/"/g,'&quot;') : ''}" placeholder="e.g. 1 240">
+        </div>
+        <div>
+          <label>Period</label>
+          <input id="period-${item.id}" type="text" value="${item.period ? item.period.replace(/"/g,'&quot;') : ''}" placeholder="e.g. Aug 2026">
+        </div>
+      </div>
+      <label>Notes</label>
+      <textarea id="notes-${item.id}" placeholder="Notes, evidence location, calculation method...">${item.notes||''}</textarea>
+
+      <div class="evidence-box">
+        <label>Evidence files</label>
+        <div class="evidence-list" id="evidence-${item.id}">Loading…</div>
+        <div class="upload-row">
+          <input type="file" id="file-${item.id}">
+          <button class="btn" onclick="uploadFile('${item.id}')">Upload evidence</button>
+        </div>
+      </div>
+
+      <div class="source-note">
+        Typical source: ${item.typical_source || '—'}
+        <br><span class="framework-tag">${item.framework_ref || ''}</span>
+      </div>
+
+      <div class="save-row">
+        <span class="save-msg" id="msg-${item.id}"></span>
+        <button class="btn primary" onclick="saveItem('${item.id}')">Save</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleCard(id){
+  const card = document.getElementById('card-' + id);
+  const opening = !card.classList.contains('open');
+  card.classList.toggle('open');
+  if (opening) loadEvidence(id);
+}
+
+async function loadEvidence(id){
+  const box = document.getElementById('evidence-' + id);
+  try {
+    const files = await api('/api/evidence/' + id);
+    box.innerHTML = files.length ? files.map(f => `
+      <span class="evidence-chip">
+        <a href="/api/download/${f.id}" target="_blank">${f.original_name}</a>
+        ${STATE.role==='admin' ? `<span class="del" onclick="deleteEvidence(${f.id},'${id}')">&times;</span>` : ''}
+      </span>`).join('') : '<span style="color:#9aa2b1;font-size:12px;">No files uploaded yet</span>';
+  } catch(e){ box.innerHTML = '<span style="color:#c0392b;font-size:12px;">Could not load files</span>'; }
+}
+
+async function uploadFile(id){
+  const input = document.getElementById('file-' + id);
+  if (!input.files.length) return;
+  const fd = new FormData();
+  fd.append('item_id', id);
+  fd.append('file', input.files[0]);
+  try {
+    await api('/api/upload', {method:'POST', body: fd});
+    input.value = '';
+    await loadEvidence(id);
+    await loadItems(); await loadSummary(); render();
+    setTimeout(()=>{ const c=document.getElementById('card-'+id); if(c) c.classList.add('open'); loadEvidence(id); }, 30);
+  } catch(e){ alert('Upload failed: ' + e.message); }
+}
+
+async function deleteEvidence(fileId, itemId){
+  if (!confirm('Remove this evidence file?')) return;
+  await api('/api/evidence/' + fileId, {method:'DELETE'});
+  await loadEvidence(itemId);
+  await loadItems(); await loadSummary();
+}
+
+async function saveItem(id){
+  const payload = {
+    item_id: id,
+    status: document.getElementById('status-'+id).value,
+    owner: document.getElementById('owner-'+id).value,
+    latest_value: document.getElementById('value-'+id).value,
+    period: document.getElementById('period-'+id).value,
+    notes: document.getElementById('notes-'+id).value,
+  };
+  const msg = document.getElementById('msg-'+id);
+  try {
+    await api('/api/capture', {method:'POST', body: JSON.stringify(payload)});
+    msg.textContent = 'Saved ✓';
+    await loadItems(); await loadSummary();
+    const item = STATE.items.find(i=>i.id===id);
+    document.querySelector('#card-'+id+' .status-pill').className = 'status-pill ' + statusClass(item.status);
+    document.querySelector('#card-'+id+' .status-pill').textContent = item.status;
+    document.querySelector('#card-'+id+' .meta').textContent = `${item.unit||''} · ${item.frequency||''} · ${item.evidence_count} file${item.evidence_count===1?'':'s'}`;
+    renderTabs();
+    setTimeout(()=>{ msg.textContent=''; }, 2000);
+  } catch(e){ msg.textContent = 'Error: ' + e.message; msg.style.color = '#c0392b'; }
+}
+
+async function exportXlsx(){
+  window.open('/api/export/xlsx', '_blank');
+}
+
+(async function init(){
+  try {
+    const s = await api('/api/session');
+    if (s.loggedIn) { STATE.role = s.role; STATE.name = s.name; await boot(); }
+    else showLogin();
+  } catch(e){ showLogin(); }
+})();
+</script>
+</body>
+</html>
