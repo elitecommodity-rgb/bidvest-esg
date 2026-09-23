@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: bidvest-esg
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: APP_PASSWORD_TEAM
+        sync: false
+      - key: APP_PASSWORD_ADMIN
+        sync: false
+    disk:
+      name: bidvest-esg-data
+      mountPath: /app/data
+      sizeGB: 1

@@ -1,0 +1,742 @@
+[
+  {
+    "id": "E01",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Grid electricity consumed, per site",
+    "unit": "kWh",
+    "frequency": "Monthly",
+    "typical_source": "Municipal / Eskom bills, sub-meter readings",
+    "framework_ref": "GRI 302-1; IFRS S2"
+  },
+  {
+    "id": "E02",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Electricity split by who pays / meters it (Bidvest vs client vs shared)",
+    "unit": "kWh, % of total",
+    "frequency": "Quarterly",
+    "typical_source": "Site register, client utility recoveries",
+    "framework_ref": "GRI 302-1 (boundary note)"
+  },
+  {
+    "id": "E03",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "LPG consumed in kitchens",
+    "unit": "kg",
+    "frequency": "Monthly",
+    "typical_source": "Gas supplier delivery notes and invoices",
+    "framework_ref": "GRI 302-1; GHG Scope 1"
+  },
+  {
+    "id": "E04",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Diesel used in backup generators (load-shedding cover)",
+    "unit": "litres, run-hours",
+    "frequency": "Monthly",
+    "typical_source": "Fuel purchase records, generator logbooks",
+    "framework_ref": "GRI 302-1; GHG Scope 1"
+  },
+  {
+    "id": "E05",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Fleet fuel used by delivery and staff vehicles, by fuel type",
+    "unit": "litres",
+    "frequency": "Monthly",
+    "typical_source": "Fuel card reports, vehicle logbooks",
+    "framework_ref": "GRI 302-1; GHG Scope 1"
+  },
+  {
+    "id": "E06",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Refrigerant top-ups / leakage from cold rooms and fridges, by gas type",
+    "unit": "kg",
+    "frequency": "Quarterly",
+    "typical_source": "Refrigeration contractor service reports",
+    "framework_ref": "GRI 305-1; GHG Scope 1"
+  },
+  {
+    "id": "E07",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Renewable energy generated or purchased (e.g. solar PV)",
+    "unit": "kWh, % of total",
+    "frequency": "Monthly",
+    "typical_source": "Inverter data, PPA statements",
+    "framework_ref": "GRI 302-1; IFRS S2"
+  },
+  {
+    "id": "E08",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Energy-efficiency projects completed (LED, efficient equipment, sub-metering)",
+    "unit": "number, kWh saved",
+    "frequency": "Annual",
+    "typical_source": "Project register, before/after readings",
+    "framework_ref": "GRI 302-4"
+  },
+  {
+    "id": "E09",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Scope 1 emissions (LPG, diesel, fleet, refrigerants)",
+    "unit": "tCO2e",
+    "frequency": "Annual",
+    "typical_source": "Calculated from activity data above",
+    "framework_ref": "GRI 305-1; IFRS S2"
+  },
+  {
+    "id": "E10",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Scope 2 emissions (purchased electricity, location-based)",
+    "unit": "tCO2e",
+    "frequency": "Annual",
+    "typical_source": "Calculated from kWh and current grid emission factor",
+    "framework_ref": "GRI 305-2; IFRS S2"
+  },
+  {
+    "id": "E11",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Scope 3 - purchased food and beverage by category (typically the largest source)",
+    "unit": "kg or R spend by category",
+    "frequency": "Annual",
+    "typical_source": "Procurement / ERP purchase data",
+    "framework_ref": "GRI 305-3; IFRS S2"
+  },
+  {
+    "id": "E12",
+    "pillar": "Environmental",
+    "category": "Energy & climate",
+    "data_point": "Scope 3 - other categories (waste, upstream transport, business travel, commuting)",
+    "unit": "tCO2e",
+    "frequency": "Annual",
+    "typical_source": "Waste contractor, courier and travel data",
+    "framework_ref": "GRI 305-3"
+  },
+  {
+    "id": "E13",
+    "pillar": "Environmental",
+    "category": "Water",
+    "data_point": "Municipal water withdrawn, per site",
+    "unit": "kL",
+    "frequency": "Monthly",
+    "typical_source": "Municipal bills, water meter readings",
+    "framework_ref": "GRI 303-3"
+  },
+  {
+    "id": "E14",
+    "pillar": "Environmental",
+    "category": "Water",
+    "data_point": "Sites with water metering (share of total sites)",
+    "unit": "% of sites",
+    "frequency": "Annual",
+    "typical_source": "Site register",
+    "framework_ref": "GRI 303-1"
+  },
+  {
+    "id": "E15",
+    "pillar": "Environmental",
+    "category": "Water",
+    "data_point": "Sites in water-stressed areas or subject to restrictions / outages",
+    "unit": "number, days affected",
+    "frequency": "Quarterly",
+    "typical_source": "Site register, municipal notices",
+    "framework_ref": "GRI 303-1; IFRS S2"
+  },
+  {
+    "id": "E16",
+    "pillar": "Environmental",
+    "category": "Water",
+    "data_point": "Grease-trap servicing and effluent compliance (by-law notices or fines)",
+    "unit": "number, R",
+    "frequency": "Quarterly",
+    "typical_source": "Service certificates, municipal notices",
+    "framework_ref": "GRI 303-2; GRI 2-27"
+  },
+  {
+    "id": "E17",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Total food waste by stage: preparation / spoilage, production surplus, plate waste",
+    "unit": "kg",
+    "frequency": "Monthly",
+    "typical_source": "Kitchen waste weigh log or waste-tracking tool",
+    "framework_ref": "GRI 306-3"
+  },
+  {
+    "id": "E18",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Food waste intensity",
+    "unit": "kg per meal served",
+    "frequency": "Monthly",
+    "typical_source": "Waste log divided by meal counts",
+    "framework_ref": "GRI 306-3 (internal KPI)"
+  },
+  {
+    "id": "E19",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Food waste diverted from landfill (composting, digestion, animal feed)",
+    "unit": "kg, % of food waste",
+    "frequency": "Monthly",
+    "typical_source": "Collector weighbridge slips, diversion certificates",
+    "framework_ref": "GRI 306-4"
+  },
+  {
+    "id": "E20",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Surplus food donated to food banks / feeding schemes",
+    "unit": "kg, meals",
+    "frequency": "Monthly",
+    "typical_source": "Donation receipts, beneficiary confirmations",
+    "framework_ref": "GRI 306-4; GRI 413-1"
+  },
+  {
+    "id": "E21",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "General waste sent to landfill",
+    "unit": "kg",
+    "frequency": "Monthly",
+    "typical_source": "Waste contractor reports and weighbridge slips",
+    "framework_ref": "GRI 306-5"
+  },
+  {
+    "id": "E22",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Recycled waste by stream (cardboard, glass, plastic, cans) and overall recycling rate",
+    "unit": "kg, %",
+    "frequency": "Monthly",
+    "typical_source": "Recycler reports",
+    "framework_ref": "GRI 306-4"
+  },
+  {
+    "id": "E23",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Used cooking oil collected and recycled",
+    "unit": "litres",
+    "frequency": "Monthly",
+    "typical_source": "Collector manifests, recycler certificates",
+    "framework_ref": "GRI 306-4"
+  },
+  {
+    "id": "E24",
+    "pillar": "Environmental",
+    "category": "Waste & food waste",
+    "data_point": "Hazardous waste (e.g. chemical containers) and safe-disposal certificates",
+    "unit": "kg, certificates on file",
+    "frequency": "Quarterly",
+    "typical_source": "Licensed contractor disposal certificates",
+    "framework_ref": "GRI 306-3; NEM:WA"
+  },
+  {
+    "id": "E25",
+    "pillar": "Environmental",
+    "category": "Packaging & sourcing",
+    "data_point": "Single-use packaging purchased by material, and share recyclable / compostable / reusable",
+    "unit": "kg or units, %",
+    "frequency": "Quarterly",
+    "typical_source": "Procurement data, supplier specifications",
+    "framework_ref": "GRI 301-1; IFRS S1"
+  },
+  {
+    "id": "E26",
+    "pillar": "Environmental",
+    "category": "Packaging & sourcing",
+    "data_point": "Packaging EPR status (registration with a producer responsibility organisation, if applicable)",
+    "unit": "status, date",
+    "frequency": "Annual",
+    "typical_source": "PRO membership, compliance correspondence",
+    "framework_ref": "NEM:WA EPR regulations"
+  },
+  {
+    "id": "E27",
+    "pillar": "Environmental",
+    "category": "Packaging & sourcing",
+    "data_point": "Food spend sourced from South African suppliers",
+    "unit": "% of food spend",
+    "frequency": "Quarterly",
+    "typical_source": "Procurement / ERP purchase data",
+    "framework_ref": "GRI 204-1"
+  },
+  {
+    "id": "E28",
+    "pillar": "Environmental",
+    "category": "Packaging & sourcing",
+    "data_point": "Key commodities from certified or sustainable sources (seafood, eggs, palm oil, coffee, etc.)",
+    "unit": "% by commodity",
+    "frequency": "Annual",
+    "typical_source": "Supplier certificates and specifications",
+    "framework_ref": "GRI 308-1; IFRS S1"
+  },
+  {
+    "id": "E29",
+    "pillar": "Environmental",
+    "category": "Packaging & sourcing",
+    "data_point": "Plant-forward meals as a share of meals served",
+    "unit": "% of meals",
+    "frequency": "Quarterly",
+    "typical_source": "Menu and POS / meal-count data",
+    "framework_ref": "Internal KPI (Scope 3 lever)"
+  },
+  {
+    "id": "S01",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Headcount by employment type (permanent, fixed-term, casual, labour-broker) and gender",
+    "unit": "number",
+    "frequency": "Quarterly",
+    "typical_source": "HR / payroll system",
+    "framework_ref": "GRI 2-7; GRI 2-8"
+  },
+  {
+    "id": "S02",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Employment equity profile by race, gender and occupational level",
+    "unit": "number, %",
+    "frequency": "Annual",
+    "typical_source": "EE reports (EEA2 / EEA4), HR system",
+    "framework_ref": "Employment Equity Act; GRI 405-1"
+  },
+  {
+    "id": "S03",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Women in management",
+    "unit": "% of managers",
+    "frequency": "Annual",
+    "typical_source": "HR system",
+    "framework_ref": "GRI 405-1"
+  },
+  {
+    "id": "S04",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Staff turnover and new hires",
+    "unit": "%, number",
+    "frequency": "Quarterly",
+    "typical_source": "HR system",
+    "framework_ref": "GRI 401-1"
+  },
+  {
+    "id": "S05",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Lowest wage paid versus National Minimum Wage / applicable sectoral or bargaining-council minimum",
+    "unit": "R per hour, % compliant",
+    "frequency": "Annual",
+    "typical_source": "Payroll",
+    "framework_ref": "National Minimum Wage Act; GRI 202-1"
+  },
+  {
+    "id": "S06",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Employees covered by collective bargaining / union recognition",
+    "unit": "% of employees",
+    "frequency": "Annual",
+    "typical_source": "HR / labour relations records",
+    "framework_ref": "GRI 2-30; GRI 407-1"
+  },
+  {
+    "id": "S07",
+    "pillar": "Social",
+    "category": "Workforce",
+    "data_point": "Grievances and CCMA / labour disputes (raised, resolved, referred)",
+    "unit": "number",
+    "frequency": "Quarterly",
+    "typical_source": "Labour relations log",
+    "framework_ref": "GRI 2-25; GRI 2-27"
+  },
+  {
+    "id": "S08",
+    "pillar": "Social",
+    "category": "Training & development",
+    "data_point": "Skills-development spend",
+    "unit": "R, % of payroll",
+    "frequency": "Annual",
+    "typical_source": "Finance, WSP / ATR submissions",
+    "framework_ref": "B-BBEE skills element; Skills Development Act"
+  },
+  {
+    "id": "S09",
+    "pillar": "Social",
+    "category": "Training & development",
+    "data_point": "Training hours per employee and learners on learnerships / apprenticeships (Learning Academy)",
+    "unit": "hours, number",
+    "frequency": "Quarterly",
+    "typical_source": "Learning Academy and training records",
+    "framework_ref": "GRI 404-1"
+  },
+  {
+    "id": "S10",
+    "pillar": "Social",
+    "category": "Training & development",
+    "data_point": "Youth (under 35), people with disabilities and interns employed",
+    "unit": "number, %",
+    "frequency": "Annual",
+    "typical_source": "HR system",
+    "framework_ref": "B-BBEE Codes; GRI 405-1"
+  },
+  {
+    "id": "S11",
+    "pillar": "Social",
+    "category": "Health & safety",
+    "data_point": "Lost-time injuries and LTIFR (cuts, burns, slips are typical kitchen causes)",
+    "unit": "number, rate per 200 000 hrs",
+    "frequency": "Monthly",
+    "typical_source": "Incident register, hours worked",
+    "framework_ref": "OHS Act; GRI 403-9"
+  },
+  {
+    "id": "S12",
+    "pillar": "Social",
+    "category": "Health & safety",
+    "data_point": "Work-related fatalities and high-consequence injuries",
+    "unit": "number",
+    "frequency": "Monthly",
+    "typical_source": "Incident register",
+    "framework_ref": "GRI 403-9"
+  },
+  {
+    "id": "S13",
+    "pillar": "Social",
+    "category": "Health & safety",
+    "data_point": "Occupational disease cases and COIDA claims",
+    "unit": "number",
+    "frequency": "Quarterly",
+    "typical_source": "COIDA records, HR",
+    "framework_ref": "COIDA; GRI 403-10"
+  },
+  {
+    "id": "S14",
+    "pillar": "Social",
+    "category": "Health & safety",
+    "data_point": "Site OHS compliance: LPG installation certificates, fire equipment servicing, first aiders, H&S reps and committee meetings",
+    "unit": "% of sites compliant",
+    "frequency": "Quarterly",
+    "typical_source": "Site H&S audits",
+    "framework_ref": "OHS Act; GRI 403-1"
+  },
+  {
+    "id": "S15",
+    "pillar": "Social",
+    "category": "Health & safety",
+    "data_point": "Food handlers with valid medical fitness certificates",
+    "unit": "% of handlers",
+    "frequency": "Annual",
+    "typical_source": "HR / site records",
+    "framework_ref": "R638; GRI 403-3"
+  },
+  {
+    "id": "S16",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Sites with valid Certificates of Acceptability (COA) from the municipality",
+    "unit": "% of sites",
+    "frequency": "Quarterly",
+    "typical_source": "Site register, certificates",
+    "framework_ref": "R638 (food premises hygiene regulations)"
+  },
+  {
+    "id": "S17",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Food safety audit results and certifications (HACCP, ISO 22000 / FSSC 22000) by site",
+    "unit": "score, % certified",
+    "frequency": "Quarterly",
+    "typical_source": "Internal and third-party audit reports",
+    "framework_ref": "GRI 416-1"
+  },
+  {
+    "id": "S18",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Food safety incidents: suspected foodborne illness, recalls, customer complaints",
+    "unit": "number",
+    "frequency": "Monthly",
+    "typical_source": "Incident and complaint register",
+    "framework_ref": "GRI 416-2"
+  },
+  {
+    "id": "S19",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Allergen labelling and management: audits passed and incidents",
+    "unit": "% compliant, number",
+    "frequency": "Quarterly",
+    "typical_source": "Menu labelling audits, incident register",
+    "framework_ref": "R146 (labelling regulations); GRI 417-1"
+  },
+  {
+    "id": "S20",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Menus meeting nutritional criteria (school, hospital and retirement contracts)",
+    "unit": "% of menus",
+    "frequency": "Annual",
+    "typical_source": "Dietitian sign-off, menu analysis",
+    "framework_ref": "GRI FP-series sector disclosures"
+  },
+  {
+    "id": "S21",
+    "pillar": "Social",
+    "category": "Food safety & customer",
+    "data_point": "Client satisfaction score",
+    "unit": "score / NPS",
+    "frequency": "Quarterly",
+    "typical_source": "Client surveys",
+    "framework_ref": "Internal KPI"
+  },
+  {
+    "id": "S22",
+    "pillar": "Social",
+    "category": "Suppliers & community",
+    "data_point": "Preferential procurement: spend with B-BBEE-compliant suppliers",
+    "unit": "% of measured spend",
+    "frequency": "Annual",
+    "typical_source": "Procurement, supplier B-BBEE certificates",
+    "framework_ref": "B-BBEE preferential procurement element"
+  },
+  {
+    "id": "S23",
+    "pillar": "Social",
+    "category": "Suppliers & community",
+    "data_point": "Spend with Black-owned, women-owned and youth-owned suppliers",
+    "unit": "R, % of spend",
+    "frequency": "Annual",
+    "typical_source": "Procurement, supplier certificates",
+    "framework_ref": "GRI 204-1"
+  },
+  {
+    "id": "S24",
+    "pillar": "Social",
+    "category": "Suppliers & community",
+    "data_point": "Enterprise and supplier development (ESD) spend and small or emerging farmers supplied",
+    "unit": "R, number",
+    "frequency": "Annual",
+    "typical_source": "Finance, ESD programme records",
+    "framework_ref": "B-BBEE ESD element"
+  },
+  {
+    "id": "S25",
+    "pillar": "Social",
+    "category": "Suppliers & community",
+    "data_point": "Socio-economic development (SED) spend and beneficiaries, including feeding-scheme meals",
+    "unit": "R, number, meals",
+    "frequency": "Annual",
+    "typical_source": "Finance, beneficiary records",
+    "framework_ref": "B-BBEE SED element; GRI 413-1"
+  },
+  {
+    "id": "S26",
+    "pillar": "Social",
+    "category": "Suppliers & community",
+    "data_point": "Human-rights or labour concerns raised about suppliers, and follow-up actions",
+    "unit": "number",
+    "frequency": "Annual",
+    "typical_source": "Supplier audit records, hotline",
+    "framework_ref": "GRI 414-1; GRI 408 / 409"
+  },
+  {
+    "id": "G01",
+    "pillar": "Governance",
+    "category": "Transformation & compliance",
+    "data_point": "B-BBEE certificate: level, scorecard points by element, and expiry date",
+    "unit": "level, points, date",
+    "frequency": "Annual",
+    "typical_source": "Verification agency certificate",
+    "framework_ref": "B-BBEE Codes"
+  },
+  {
+    "id": "G02",
+    "pillar": "Governance",
+    "category": "Transformation & compliance",
+    "data_point": "Black ownership and management control of the entity",
+    "unit": "%",
+    "frequency": "Annual",
+    "typical_source": "Verification agency scorecard, shareholder register",
+    "framework_ref": "B-BBEE Codes"
+  },
+  {
+    "id": "G03",
+    "pillar": "Governance",
+    "category": "Transformation & compliance",
+    "data_point": "Fines and sanctions for non-compliance (environmental, labour, food safety, OHS)",
+    "unit": "number, R",
+    "frequency": "Annual",
+    "typical_source": "Legal / compliance register",
+    "framework_ref": "GRI 2-27"
+  },
+  {
+    "id": "G04",
+    "pillar": "Governance",
+    "category": "Transformation & compliance",
+    "data_point": "Legal register: permits, licences and certificates with renewal dates",
+    "unit": "% current",
+    "frequency": "Quarterly",
+    "typical_source": "Compliance register",
+    "framework_ref": "GRI 2-27"
+  },
+  {
+    "id": "G05",
+    "pillar": "Governance",
+    "category": "Oversight & reporting",
+    "data_point": "Named ESG owner and Exco / board oversight (committee meeting frequency, ESG agenda items)",
+    "unit": "name, meetings per year",
+    "frequency": "Annual",
+    "typical_source": "Governance records, minutes",
+    "framework_ref": "King IV / King V; GRI 2-9, 2-12"
+  },
+  {
+    "id": "G06",
+    "pillar": "Governance",
+    "category": "Oversight & reporting",
+    "data_point": "Data feed to Bidvest Group ESG reporting: templates, deadlines and sign-off (Group year-end is 30 June)",
+    "unit": "submitted Y/N, date",
+    "frequency": "Annual",
+    "typical_source": "Group ESG / finance team requests",
+    "framework_ref": "Group Sustainability and Governance Report"
+  },
+  {
+    "id": "G07",
+    "pillar": "Governance",
+    "category": "Oversight & reporting",
+    "data_point": "Material ESG topics and date of last materiality review",
+    "unit": "date, topic list",
+    "frequency": "Annual",
+    "typical_source": "Materiality assessment",
+    "framework_ref": "GRI 3-1; IFRS S1"
+  },
+  {
+    "id": "G08",
+    "pillar": "Governance",
+    "category": "Oversight & reporting",
+    "data_point": "ESG and climate risks in the risk register (load-shedding, water, food-price, supplier risk) with owners",
+    "unit": "number, rating",
+    "frequency": "Semi-annual",
+    "typical_source": "Risk register",
+    "framework_ref": "IFRS S1 / S2; GRI 201-2"
+  },
+  {
+    "id": "G09",
+    "pillar": "Governance",
+    "category": "Ethics & conduct",
+    "data_point": "Policies approved and current: ESG, environmental, H&S, anti-corruption, human rights, whistleblowing, supplier code",
+    "unit": "count, review dates",
+    "frequency": "Annual",
+    "typical_source": "Policy register",
+    "framework_ref": "GRI 2-23"
+  },
+  {
+    "id": "G10",
+    "pillar": "Governance",
+    "category": "Ethics & conduct",
+    "data_point": "Ethics hotline reports received, investigated and closed",
+    "unit": "number",
+    "frequency": "Quarterly",
+    "typical_source": "Hotline provider reports",
+    "framework_ref": "GRI 2-26"
+  },
+  {
+    "id": "G11",
+    "pillar": "Governance",
+    "category": "Ethics & conduct",
+    "data_point": "Confirmed corruption, bribery or fraud incidents and outcomes",
+    "unit": "number",
+    "frequency": "Annual",
+    "typical_source": "Forensic / legal records",
+    "framework_ref": "GRI 205-3"
+  },
+  {
+    "id": "G12",
+    "pillar": "Governance",
+    "category": "Ethics & conduct",
+    "data_point": "Employees trained on ethics and anti-corruption",
+    "unit": "% of employees",
+    "frequency": "Annual",
+    "typical_source": "Training records",
+    "framework_ref": "GRI 205-2"
+  },
+  {
+    "id": "G13",
+    "pillar": "Governance",
+    "category": "Supply chain governance",
+    "data_point": "Suppliers that have signed the supplier code of conduct",
+    "unit": "% of suppliers, % of spend",
+    "frequency": "Annual",
+    "typical_source": "Procurement / contract records",
+    "framework_ref": "GRI 308-1; GRI 414-1"
+  },
+  {
+    "id": "G14",
+    "pillar": "Governance",
+    "category": "Supply chain governance",
+    "data_point": "Supplier ESG or ethics audits and corrective actions",
+    "unit": "number",
+    "frequency": "Annual",
+    "typical_source": "Supplier audit records",
+    "framework_ref": "GRI 308-2; GRI 414-2"
+  },
+  {
+    "id": "G15",
+    "pillar": "Governance",
+    "category": "Supply chain governance",
+    "data_point": "Client contracts with ESG or sustainability clauses, and ESG questionnaires received (e.g. CDP supply chain, EcoVadis)",
+    "unit": "number",
+    "frequency": "Annual",
+    "typical_source": "Contracts, sales / bid team",
+    "framework_ref": "Internal KPI"
+  },
+  {
+    "id": "G16",
+    "pillar": "Governance",
+    "category": "Data integrity & assurance",
+    "data_point": "Documented calculation methods, emission-factor versions and data owners for each metric",
+    "unit": "Y/N, date",
+    "frequency": "Annual",
+    "typical_source": "ESG data protocol",
+    "framework_ref": "GRI 1 (reporting principles)"
+  },
+  {
+    "id": "G17",
+    "pillar": "Governance",
+    "category": "Data integrity & assurance",
+    "data_point": "Level of external or internal-audit assurance on ESG data (limited / reasonable / none)",
+    "unit": "level",
+    "frequency": "Annual",
+    "typical_source": "Assurance provider or internal audit report",
+    "framework_ref": "GRI 2-5; King IV / King V"
+  },
+  {
+    "id": "G18",
+    "pillar": "Governance",
+    "category": "Data integrity & assurance",
+    "data_point": "Evidence retained for each data point (bills, weighbridge slips, certificates)",
+    "unit": "% with evidence",
+    "frequency": "Quarterly",
+    "typical_source": "Shared evidence folder",
+    "framework_ref": "Assurance readiness"
+  },
+  {
+    "id": "G19",
+    "pillar": "Governance",
+    "category": "Data integrity & assurance",
+    "data_point": "POPIA compliance: Information Officer registered, breaches reported",
+    "unit": "Y/N, number",
+    "frequency": "Annual",
+    "typical_source": "Information Regulator records, IT / legal",
+    "framework_ref": "POPIA"
+  }
+]
