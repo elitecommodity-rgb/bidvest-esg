@@ -1,20 +1,22 @@
 import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
 from flask import Flask, g, jsonify, request, send_file, session, send_from_directory
+from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "bidvest_esg.db"))
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(BASE_DIR, "data", "uploads"))
 CHECKLIST_JSON = os.path.join(BASE_DIR, "checklist_items.json")
 
-TEAM_PASSWORD = os.environ.get("APP_PASSWORD_TEAM", "bidvest-esg-team")
-ADMIN_PASSWORD = os.environ.get("APP_PASSWORD_ADMIN", "bidvest-esg-admin")
+BOOTSTRAP_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+BOOTSTRAP_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "bidvest-esg-admin")
 MAX_UPLOAD_MB = 20
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -24,17 +26,95 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
-DEFAULT_OWNERS = [
-    "ESG Owner (Group liaison)",
-    "Site Manager",
-    "HR",
-    "Procurement",
-    "Finance",
-    "Health & Safety",
-    "Learning Academy",
-]
-
 STATUSES = ["Not started", "In progress", "Collected", "Verified", "N/A"]
+ENTRY_FREQUENCIES = ["Daily", "Weekly", "Monthly"]
+KITCHEN_CATEGORIES = ["School", "Hospital", "Corporate", "Retirement Village", "Learning Academy", "Other"]
+PILLARS = ["Environmental", "Social", "Governance"]
+
+# ---------------------------------------------------------------- helpers
+
+def agg_method_for_unit(unit_text):
+    """Classify a checklist item's reporting unit into how repeated entries roll up.
+    Heuristic based on the first comma-separated token of the unit text — good enough
+    to auto-sum clearly additive quantities (kg, kWh, litres, headcounts, Rand totals)
+    and auto-average clearly intensity/ratio metrics (%, scores, rates), but a rough
+    proxy for the ~74 free-text unit strings in the checklist. A per-hour wage RATE
+    (e.g. "R per hour") is intentionally routed to 'latest', not summed, via the
+    rate/per check below running before the bare-currency check."""
+    u = (unit_text or "").lower()
+    first_token = u.split(",")[0].strip()
+
+    def has(word):
+        return re.search(r"\b" + re.escape(word) + r"\b", first_token) is not None
+
+    latest_markers = ["status", "date", "level", "name", "topic"]
+    if (any(has(m) for m in latest_markers) or "y/n" in first_token) and "%" not in first_token:
+        return "latest"
+    if "per hour" in first_token or "per meal" in first_token or first_token.startswith("score"):
+        return "latest" if "per" in first_token else "average"
+    if "%" in first_token or has("rate") or has("score"):
+        return "average"
+    sum_markers = ["kg", "kwh", "litre", "l", "kl", "r", "number", "meals", "hours",
+                   "tco2e", "count"]
+    if any(has(m) for m in sum_markers):
+        return "sum"
+    return "latest"
+
+
+NUMERIC_STRIP_RE = re.compile(r"[^0-9.\-]")
+
+
+def parse_numeric(value_text):
+    if value_text is None:
+        return None
+    s = str(value_text).strip()
+    if not s:
+        return None
+    # take the first number-looking token so "1 240 kg" / "R 800" / "45%" all parse
+    m = re.search(r"-?[0-9][0-9,]*\.?[0-9]*", s.replace(" ", ""))
+    if not m:
+        return None
+    cleaned = NUMERIC_STRIP_RE.sub("", m.group(0).replace(",", ""))
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def period_bounds(d, frequency):
+    """Return (start_date, end_date, period_key) for the period containing date d."""
+    freq = (frequency or "").lower()
+    if freq.startswith("month"):
+        start = d.replace(day=1)
+        nxt = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        end = nxt - timedelta(days=1)
+        key = start.strftime("%Y-%m")
+    elif freq.startswith("quarter"):
+        q = (d.month - 1) // 3
+        start = date(d.year, q * 3 + 1, 1)
+        end_month = q * 3 + 3
+        nxt = (date(d.year, end_month, 28) + timedelta(days=4)).replace(day=1)
+        end = nxt - timedelta(days=1)
+        key = f"{d.year}-Q{q + 1}"
+    elif freq.startswith("semi"):
+        half = 1 if d.month <= 6 else 2
+        start = date(d.year, 1 if half == 1 else 7, 1)
+        end = date(d.year, 6, 30) if half == 1 else date(d.year, 12, 31)
+        key = f"{d.year}-H{half}"
+    else:  # annual / unspecified
+        start = date(d.year, 1, 1)
+        end = date(d.year, 12, 31)
+        key = str(d.year)
+    return start, end, key
+
+
+def parse_date(s, default=None):
+    if not s:
+        return default or date.today()
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        return default or date.today()
 
 
 # ---------------------------------------------------------------- database
@@ -45,6 +125,7 @@ def get_db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA journal_mode=WAL")
         g.db.execute("PRAGMA busy_timeout=5000")
+        g.db.execute("PRAGMA foreign_keys=ON")
     return g.db
 
 
@@ -70,77 +151,106 @@ def init_db():
             frequency TEXT,
             typical_source TEXT,
             framework_ref TEXT,
+            agg_method TEXT NOT NULL DEFAULT 'latest',
             sort_order INTEGER
         );
 
-        CREATE TABLE IF NOT EXISTS capture_records (
-            item_id TEXT PRIMARY KEY REFERENCES checklist_items(id),
-            status TEXT NOT NULL DEFAULT 'Not started',
-            latest_value TEXT,
-            period TEXT,
-            notes TEXT,
-            owner TEXT,
-            updated_by TEXT,
-            updated_at TEXT
+        CREATE TABLE IF NOT EXISTS regions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS capture_history (
+        CREATE TABLE IF NOT EXISTS units (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_id TEXT NOT NULL,
-            status TEXT,
-            latest_value TEXT,
-            period TEXT,
+            name TEXT NOT NULL,
+            region_id INTEGER NOT NULL REFERENCES regions(id),
+            category TEXT NOT NULL,
+            created_at TEXT,
+            UNIQUE(name, region_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'site',
+            unit_id INTEGER REFERENCES units(id),
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id TEXT NOT NULL REFERENCES checklist_items(id),
+            unit_id INTEGER NOT NULL REFERENCES units(id),
+            entry_date TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            value_text TEXT,
+            numeric_value REAL,
             notes TEXT,
-            owner TEXT,
-            updated_by TEXT,
-            updated_at TEXT
+            created_by INTEGER,
+            created_by_name TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_entries_item_unit ON entries(item_id, unit_id);
+
+        CREATE TABLE IF NOT EXISTS period_flags (
+            item_id TEXT NOT NULL,
+            unit_id INTEGER NOT NULL,
+            period_key TEXT NOT NULL,
+            flag TEXT NOT NULL,
+            set_by TEXT,
+            set_at TEXT,
+            PRIMARY KEY (item_id, unit_id, period_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS unit_item_na (
+            item_id TEXT NOT NULL,
+            unit_id INTEGER NOT NULL,
+            set_by TEXT,
+            set_at TEXT,
+            PRIMARY KEY (item_id, unit_id)
         );
 
         CREATE TABLE IF NOT EXISTS evidence_files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_id TEXT NOT NULL,
+            unit_id INTEGER NOT NULL,
+            entry_id INTEGER REFERENCES entries(id),
             stored_name TEXT NOT NULL,
             original_name TEXT NOT NULL,
             filesize INTEGER,
             uploaded_by TEXT,
             uploaded_at TEXT
         );
-
-        CREATE TABLE IF NOT EXISTS owners (
-            name TEXT PRIMARY KEY
-        );
         """
     )
     db.commit()
 
-    # Seed checklist items idempotently. Multiple gunicorn workers can call
-    # init_db() concurrently on first boot (same fresh sqlite file) — use
-    # INSERT OR IGNORE everywhere here so a race never raises IntegrityError.
     with open(CHECKLIST_JSON) as f:
         items = json.load(f)
     for idx, item in enumerate(items):
         db.execute(
             """INSERT OR IGNORE INTO checklist_items
-               (id, pillar, category, data_point, unit, frequency, typical_source, framework_ref, sort_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, pillar, category, data_point, unit, frequency, typical_source, framework_ref, agg_method, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item["id"], item["pillar"], item["category"], item["data_point"],
                 item.get("unit"), item.get("frequency"), item.get("typical_source"),
-                item.get("framework_ref"), idx,
+                item.get("framework_ref"), agg_method_for_unit(item.get("unit")), idx,
             ),
-        )
-        db.execute(
-            """INSERT OR IGNORE INTO capture_records (item_id, status, updated_at)
-               VALUES (?, 'Not started', ?)""",
-            (item["id"], datetime.now(timezone.utc).isoformat()),
         )
     db.commit()
 
-    cur = db.execute("SELECT COUNT(*) AS c FROM owners")
-    if cur.fetchone()["c"] == 0:
-        for name in DEFAULT_OWNERS:
-            db.execute("INSERT OR IGNORE INTO owners (name) VALUES (?)", (name,))
-        db.commit()
+    # INSERT OR IGNORE (not a count-then-insert check) so concurrent gunicorn workers
+    # racing to seed the bootstrap admin on first boot never raise IntegrityError.
+    db.execute(
+        """INSERT OR IGNORE INTO users (username, password_hash, name, role, unit_id, created_at)
+           VALUES (?, ?, ?, 'admin', NULL, ?)""",
+        (BOOTSTRAP_ADMIN_USERNAME, generate_password_hash(BOOTSTRAP_ADMIN_PASSWORD),
+         "Bidvest Admin", datetime.now(timezone.utc).isoformat()),
+    )
+    db.commit()
 
     db.close()
 
@@ -150,29 +260,46 @@ init_db()
 
 # ---------------------------------------------------------------- auth
 
+def current_user():
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    row = get_db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    return dict(row) if row else None
+
+
 def require_login(admin_only=False):
-    role = session.get("role")
-    if not role:
-        return jsonify({"error": "Not logged in"}), 401
-    if admin_only and role != "admin":
-        return jsonify({"error": "Admin access required"}), 403
-    return None
+    user = current_user()
+    if not user:
+        return None, (jsonify({"error": "Not logged in"}), 401)
+    if admin_only and user["role"] != "admin":
+        return None, (jsonify({"error": "Admin access required"}), 403)
+    return user, None
+
+
+def unit_ids_for(user):
+    """Units this user may act on: all of them for admin, else just their own."""
+    db = get_db()
+    if user["role"] == "admin":
+        return [r["id"] for r in db.execute("SELECT id FROM units").fetchall()]
+    return [user["unit_id"]] if user["unit_id"] else []
 
 
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(force=True, silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
     password = data.get("password", "")
-    name = (data.get("name") or "").strip()
-    if password == ADMIN_PASSWORD:
-        session["role"] = "admin"
-        session["name"] = name or "ESG Owner"
-        return jsonify({"role": "admin", "name": session["name"]})
-    if password == TEAM_PASSWORD:
-        session["role"] = "team"
-        session["name"] = name or "Team member"
-        return jsonify({"role": "team", "name": session["name"]})
-    return jsonify({"error": "Incorrect password"}), 401
+    db = get_db()
+    row = db.execute("SELECT * FROM users WHERE lower(username)=?", (username,)).fetchone()
+    if not row or not check_password_hash(row["password_hash"], password):
+        return jsonify({"error": "Incorrect username or password"}), 401
+    session["user_id"] = row["id"]
+    unit = None
+    if row["unit_id"]:
+        u = db.execute("SELECT * FROM units WHERE id=?", (row["unit_id"],)).fetchone()
+        unit = dict(u) if u else None
+    return jsonify({"role": row["role"], "name": row["name"], "username": row["username"], "unit": unit})
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -183,103 +310,348 @@ def logout():
 
 @app.route("/api/session")
 def whoami():
-    if not session.get("role"):
+    user = current_user()
+    if not user:
         return jsonify({"loggedIn": False})
-    return jsonify({"loggedIn": True, "role": session["role"], "name": session.get("name")})
-
-
-# ---------------------------------------------------------------- checklist
-
-@app.route("/api/checklist")
-def checklist():
-    err = require_login()
-    if err:
-        return err
     db = get_db()
-    rows = db.execute(
-        """SELECT ci.*, cr.status, cr.latest_value, cr.period, cr.notes, cr.owner,
-                  cr.updated_by, cr.updated_at,
-                  (SELECT COUNT(*) FROM evidence_files ef WHERE ef.item_id = ci.id) AS evidence_count
-           FROM checklist_items ci
-           LEFT JOIN capture_records cr ON cr.item_id = ci.id
-           ORDER BY ci.sort_order"""
-    ).fetchall()
-    return jsonify([dict(r) for r in rows])
+    unit = None
+    if user["unit_id"]:
+        u = db.execute("SELECT * FROM units WHERE id=?", (user["unit_id"],)).fetchone()
+        unit = dict(u) if u else None
+    return jsonify({"loggedIn": True, "role": user["role"], "name": user["name"],
+                    "username": user["username"], "unit": unit})
 
 
-@app.route("/api/owners", methods=["GET", "POST"])
-def owners():
+# ---------------------------------------------------------------- regions / units / users
+
+@app.route("/api/regions", methods=["GET", "POST"])
+def regions():
     db = get_db()
     if request.method == "GET":
-        err = require_login()
+        user, err = require_login()
         if err:
             return err
-        rows = db.execute("SELECT name FROM owners ORDER BY name").fetchall()
-        return jsonify([r["name"] for r in rows])
-    err = require_login(admin_only=True)
+        rows = db.execute("SELECT * FROM regions ORDER BY name").fetchall()
+        return jsonify([dict(r) for r in rows])
+    user, err = require_login(admin_only=True)
     if err:
         return err
     data = request.get_json(force=True, silent=True) or {}
     name = (data.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "Name required"}), 400
-    db.execute("INSERT OR IGNORE INTO owners (name) VALUES (?)", (name,))
+        return jsonify({"error": "Region name required"}), 400
+    db.execute("INSERT OR IGNORE INTO regions (name) VALUES (?)", (name,))
     db.commit()
-    rows = db.execute("SELECT name FROM owners ORDER BY name").fetchall()
-    return jsonify([r["name"] for r in rows])
+    rows = db.execute("SELECT * FROM regions ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
 
 
-@app.route("/api/capture", methods=["POST"])
-def capture():
-    err = require_login()
+@app.route("/api/units", methods=["GET", "POST"])
+def units():
+    db = get_db()
+    if request.method == "GET":
+        user, err = require_login()
+        if err:
+            return err
+        rows = db.execute(
+            """SELECT u.*, r.name AS region_name FROM units u
+               JOIN regions r ON r.id = u.region_id ORDER BY r.name, u.name"""
+        ).fetchall()
+        result = [dict(r) for r in rows]
+        if user["role"] != "admin":
+            result = [r for r in result if r["id"] == user["unit_id"]]
+        return jsonify(result)
+    user, err = require_login(admin_only=True)
     if err:
         return err
     data = request.get_json(force=True, silent=True) or {}
-    item_id = data.get("item_id")
-    if not item_id:
-        return jsonify({"error": "item_id required"}), 400
-    status = data.get("status")
-    if status not in STATUSES:
-        return jsonify({"error": "Invalid status"}), 400
+    name = (data.get("name") or "").strip()
+    region_name = (data.get("region") or "").strip()
+    category = data.get("category")
+    if not name or not region_name or category not in KITCHEN_CATEGORIES:
+        return jsonify({"error": "name, region and a valid category are required"}), 400
+    db.execute("INSERT OR IGNORE INTO regions (name) VALUES (?)", (region_name,))
+    region_id = db.execute("SELECT id FROM regions WHERE name=?", (region_name,)).fetchone()["id"]
+    try:
+        db.execute(
+            "INSERT INTO units (name, region_id, category, created_at) VALUES (?, ?, ?, ?)",
+            (name, region_id, category, datetime.now(timezone.utc).isoformat()),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "A unit with that name already exists in that region"}), 409
+    return jsonify({"ok": True})
 
+
+@app.route("/api/users", methods=["GET", "POST"])
+def users_endpoint():
+    user, err = require_login(admin_only=True)
+    if err:
+        return err
     db = get_db()
-    exists = db.execute("SELECT 1 FROM checklist_items WHERE id = ?", (item_id,)).fetchone()
-    if not exists:
-        return jsonify({"error": "Unknown item_id"}), 404
+    if request.method == "GET":
+        rows = db.execute(
+            """SELECT us.id, us.username, us.name, us.role, us.unit_id, u.name AS unit_name
+               FROM users us LEFT JOIN units u ON u.id = us.unit_id ORDER BY us.name"""
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    data = request.get_json(force=True, silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
+    name = (data.get("name") or "").strip()
+    password = data.get("password") or ""
+    role = data.get("role") if data.get("role") in ("admin", "site") else "site"
+    unit_id = data.get("unit_id")
+    if not username or not name or len(password) < 6:
+        return jsonify({"error": "username, name and a password of 6+ characters are required"}), 400
+    if role == "site" and not unit_id:
+        return jsonify({"error": "A site user must be assigned to a unit"}), 400
+    try:
+        db.execute(
+            """INSERT INTO users (username, password_hash, name, role, unit_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (username, generate_password_hash(password), name, role, unit_id if role == "site" else None,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "That username is already taken"}), 409
+    return jsonify({"ok": True})
 
+
+@app.route("/api/meta")
+def meta():
+    user, err = require_login()
+    if err:
+        return err
+    return jsonify({"kitchen_categories": KITCHEN_CATEGORIES, "pillars": PILLARS,
+                     "entry_frequencies": ENTRY_FREQUENCIES})
+
+
+# ---------------------------------------------------------------- checklist / status
+
+@app.route("/api/checklist")
+def checklist():
+    user, err = require_login()
+    if err:
+        return err
+    db = get_db()
+    rows = db.execute("SELECT * FROM checklist_items ORDER BY sort_order").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+def compute_item_status(db, item, unit_id, today=None):
+    today = today or date.today()
+    start, end, period_key = period_bounds(today, item["frequency"])
+
+    na = db.execute("SELECT 1 FROM unit_item_na WHERE item_id=? AND unit_id=?",
+                     (item["id"], unit_id)).fetchone()
+    if na:
+        return {"status": "N/A", "period_key": period_key, "rollup_value": None, "entry_count": 0}
+
+    flag = db.execute(
+        "SELECT flag FROM period_flags WHERE item_id=? AND unit_id=? AND period_key=?",
+        (item["id"], unit_id, period_key),
+    ).fetchone()
+
+    period_entries = db.execute(
+        """SELECT * FROM entries WHERE item_id=? AND unit_id=? AND entry_date>=? AND entry_date<=?
+           ORDER BY entry_date""",
+        (item["id"], unit_id, start.isoformat(), end.isoformat()),
+    ).fetchall()
+
+    any_entry = db.execute(
+        "SELECT 1 FROM entries WHERE item_id=? AND unit_id=? LIMIT 1", (item["id"], unit_id)
+    ).fetchone()
+
+    rollup_value = None
+    numeric_vals = [e["numeric_value"] for e in period_entries if e["numeric_value"] is not None]
+    if period_entries:
+        if item["agg_method"] == "sum" and numeric_vals:
+            rollup_value = round(sum(numeric_vals), 4)
+        elif item["agg_method"] == "average" and numeric_vals:
+            rollup_value = round(sum(numeric_vals) / len(numeric_vals), 4)
+        else:
+            rollup_value = period_entries[-1]["value_text"]
+
+    if flag and flag["flag"] == "Verified" and period_entries:
+        status = "Verified"
+    elif period_entries:
+        status = "Collected"
+    elif any_entry:
+        status = "In progress"
+    else:
+        status = "Not started"
+
+    return {
+        "status": status, "period_key": period_key, "period_start": start.isoformat(),
+        "period_end": end.isoformat(), "rollup_value": rollup_value,
+        "entry_count": len(period_entries), "agg_method": item["agg_method"],
+    }
+
+
+@app.route("/api/status")
+def status_endpoint():
+    user, err = require_login()
+    if err:
+        return err
+    db = get_db()
+    unit_id = request.args.get("unit_id", type=int)
+    allowed = unit_ids_for(user)
+    if unit_id is not None and unit_id not in allowed:
+        return jsonify({"error": "Not permitted for that unit"}), 403
+    target_units = [unit_id] if unit_id else allowed
+    items = db.execute("SELECT * FROM checklist_items ORDER BY sort_order").fetchall()
+
+    result = []
+    for item in items:
+        item = dict(item)
+        per_unit = {}
+        for uid in target_units:
+            per_unit[uid] = compute_item_status(db, item, uid)
+        # roll multiple units up for this item: worst-case status wins for the summary view
+        order = {"N/A": 0, "Not started": 1, "In progress": 2, "Collected": 3, "Verified": 4}
+        if per_unit:
+            worst = min(per_unit.values(), key=lambda v: order[v["status"]])
+            evidence_count = db.execute(
+                "SELECT COUNT(*) c FROM evidence_files WHERE item_id=? AND unit_id IN (%s)" %
+                ",".join("?" * len(target_units)),
+                (item["id"], *target_units),
+            ).fetchone()["c"]
+        else:
+            worst = {"status": "Not started", "period_key": None, "rollup_value": None, "entry_count": 0}
+            evidence_count = 0
+        item["status_summary"] = worst
+        item["per_unit"] = {str(k): v for k, v in per_unit.items()}
+        item["evidence_count"] = evidence_count
+        result.append(item)
+    return jsonify(result)
+
+
+@app.route("/api/flags", methods=["POST"])
+def set_flag():
+    user, err = require_login(admin_only=True)
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    item_id, unit_id = data.get("item_id"), data.get("unit_id")
+    action = data.get("action")
+    db = get_db()
     now = datetime.now(timezone.utc).isoformat()
-    updated_by = session.get("name", "Unknown")
-    latest_value = data.get("latest_value")
-    period = data.get("period")
-    notes = data.get("notes")
-    owner = data.get("owner")
-
-    db.execute(
-        """INSERT INTO capture_records (item_id, status, latest_value, period, notes, owner, updated_by, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(item_id) DO UPDATE SET
-             status=excluded.status, latest_value=excluded.latest_value, period=excluded.period,
-             notes=excluded.notes, owner=excluded.owner, updated_by=excluded.updated_by, updated_at=excluded.updated_at""",
-        (item_id, status, latest_value, period, notes, owner, updated_by, now),
-    )
-    db.execute(
-        """INSERT INTO capture_history (item_id, status, latest_value, period, notes, owner, updated_by, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (item_id, status, latest_value, period, notes, owner, updated_by, now),
-    )
+    if action == "mark_na":
+        db.execute("INSERT OR REPLACE INTO unit_item_na (item_id, unit_id, set_by, set_at) VALUES (?,?,?,?)",
+                   (item_id, unit_id, user["name"], now))
+    elif action == "clear_na":
+        db.execute("DELETE FROM unit_item_na WHERE item_id=? AND unit_id=?", (item_id, unit_id))
+    elif action == "verify":
+        item = db.execute("SELECT * FROM checklist_items WHERE id=?", (item_id,)).fetchone()
+        _, _, period_key = period_bounds(date.today(), item["frequency"])
+        db.execute(
+            "INSERT OR REPLACE INTO period_flags (item_id, unit_id, period_key, flag, set_by, set_at) VALUES (?,?,?,?,?,?)",
+            (item_id, unit_id, period_key, "Verified", user["name"], now),
+        )
+    else:
+        return jsonify({"error": "Unknown action"}), 400
     db.commit()
     return jsonify({"ok": True})
 
 
-@app.route("/api/history/<item_id>")
-def history(item_id):
-    err = require_login()
+# ---------------------------------------------------------------- entry capture
+
+@app.route("/api/entry", methods=["POST"])
+def add_entry():
+    user, err = require_login()
     if err:
         return err
     db = get_db()
-    rows = db.execute(
-        "SELECT * FROM capture_history WHERE item_id = ? ORDER BY id DESC LIMIT 50", (item_id,)
-    ).fetchall()
+    item_id = request.form.get("item_id") or (request.get_json(silent=True) or {}).get("item_id")
+    unit_id = request.form.get("unit_id", type=int) or (request.get_json(silent=True) or {}).get("unit_id")
+    frequency = request.form.get("frequency") or (request.get_json(silent=True) or {}).get("frequency")
+    entry_date_s = request.form.get("entry_date") or (request.get_json(silent=True) or {}).get("entry_date")
+    value_text = request.form.get("value_text") or (request.get_json(silent=True) or {}).get("value_text")
+    notes = request.form.get("notes") or (request.get_json(silent=True) or {}).get("notes")
+
+    if not item_id or not unit_id or frequency not in ENTRY_FREQUENCIES:
+        return jsonify({"error": "item_id, unit_id and a valid frequency are required"}), 400
+    if unit_id not in unit_ids_for(user):
+        return jsonify({"error": "You are not assigned to that unit"}), 403
+
+    item = db.execute("SELECT * FROM checklist_items WHERE id=?", (item_id,)).fetchone()
+    if not item:
+        return jsonify({"error": "Unknown item_id"}), 404
+    unit = db.execute("SELECT * FROM units WHERE id=?", (unit_id,)).fetchone()
+    if not unit:
+        return jsonify({"error": "Unknown unit_id"}), 404
+
+    entry_date = parse_date(entry_date_s)
+    numeric_value = parse_numeric(value_text)
+    now = datetime.now(timezone.utc).isoformat()
+
+    cur = db.execute(
+        """INSERT INTO entries (item_id, unit_id, entry_date, frequency, value_text, numeric_value,
+                                 notes, created_by, created_by_name, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (item_id, unit_id, entry_date.isoformat(), frequency, value_text, numeric_value,
+         notes, user["id"], user["name"], now),
+    )
+    entry_id = cur.lastrowid
+
+    evidence_saved = None
+    if "file" in request.files and request.files["file"].filename:
+        file = request.files["file"]
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext in ALLOWED_EXTENSIONS:
+            stored_name = f"{item_id}_{uuid.uuid4().hex}.{ext}"
+            dest_dir = os.path.join(UPLOAD_DIR, item_id)
+            os.makedirs(dest_dir, exist_ok=True)
+            dest_path = os.path.join(dest_dir, stored_name)
+            file.save(dest_path)
+            db.execute(
+                """INSERT INTO evidence_files (item_id, unit_id, entry_id, stored_name, original_name,
+                                                filesize, uploaded_by, uploaded_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (item_id, unit_id, entry_id, stored_name, file.filename, os.path.getsize(dest_path),
+                 user["name"], now),
+            )
+            evidence_saved = file.filename
+
+    db.commit()
+
+    status = compute_item_status(db, dict(item), unit_id)
+    return jsonify({
+        "ok": True,
+        "confirmation": f"Recorded {item['id']} – {item['data_point']} for {unit['name']} "
+                        f"({unit['category']}), {entry_date.strftime('%d %b %Y')}.",
+        "evidence_saved": evidence_saved,
+        "status": status,
+    })
+
+
+@app.route("/api/entries")
+def list_entries():
+    user, err = require_login()
+    if err:
+        return err
+    db = get_db()
+    item_id = request.args.get("item_id")
+    unit_id = request.args.get("unit_id", type=int)
+    allowed = unit_ids_for(user)
+    q = "SELECT e.*, u.name AS unit_name FROM entries e JOIN units u ON u.id=e.unit_id WHERE 1=1"
+    params = []
+    if item_id:
+        q += " AND e.item_id=?"
+        params.append(item_id)
+    if unit_id:
+        if unit_id not in allowed:
+            return jsonify({"error": "Not permitted"}), 403
+        q += " AND e.unit_id=?"
+        params.append(unit_id)
+    elif allowed:
+        q += " AND e.unit_id IN (%s)" % ",".join("?" * len(allowed))
+        params.extend(allowed)
+    else:
+        return jsonify([])
+    q += " ORDER BY e.entry_date DESC, e.id DESC LIMIT 200"
+    rows = db.execute(q, params).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
@@ -291,68 +663,41 @@ ALLOWED_EXTENSIONS = {
 }
 
 
-@app.route("/api/evidence/<item_id>")
-def list_evidence(item_id):
-    err = require_login()
+@app.route("/api/evidence")
+def list_evidence():
+    user, err = require_login()
     if err:
         return err
+    item_id = request.args.get("item_id")
+    unit_id = request.args.get("unit_id", type=int)
     db = get_db()
-    rows = db.execute(
-        "SELECT id, original_name, filesize, uploaded_by, uploaded_at FROM evidence_files WHERE item_id = ? ORDER BY id DESC",
-        (item_id,),
-    ).fetchall()
+    allowed = unit_ids_for(user)
+    q = "SELECT * FROM evidence_files WHERE item_id=?"
+    params = [item_id]
+    if unit_id:
+        if unit_id not in allowed:
+            return jsonify({"error": "Not permitted"}), 403
+        q += " AND unit_id=?"
+        params.append(unit_id)
+    elif allowed:
+        q += " AND unit_id IN (%s)" % ",".join("?" * len(allowed))
+        params.extend(allowed)
+    q += " ORDER BY id DESC"
+    rows = db.execute(q, params).fetchall()
     return jsonify([dict(r) for r in rows])
-
-
-@app.route("/api/upload", methods=["POST"])
-def upload():
-    err = require_login()
-    if err:
-        return err
-    item_id = request.form.get("item_id")
-    if not item_id:
-        return jsonify({"error": "item_id required"}), 400
-    db = get_db()
-    exists = db.execute("SELECT 1 FROM checklist_items WHERE id = ?", (item_id,)).fetchone()
-    if not exists:
-        return jsonify({"error": "Unknown item_id"}), 404
-
-    if "file" not in request.files:
-        return jsonify({"error": "No file"}), 400
-    file = request.files["file"]
-    if not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({"error": f"File type .{ext} not allowed"}), 400
-
-    stored_name = f"{item_id}_{uuid.uuid4().hex}.{ext}"
-    dest_dir = os.path.join(UPLOAD_DIR, item_id)
-    os.makedirs(dest_dir, exist_ok=True)
-    dest_path = os.path.join(dest_dir, stored_name)
-    file.save(dest_path)
-    filesize = os.path.getsize(dest_path)
-
-    now = datetime.now(timezone.utc).isoformat()
-    uploaded_by = session.get("name", "Unknown")
-    cur = db.execute(
-        """INSERT INTO evidence_files (item_id, stored_name, original_name, filesize, uploaded_by, uploaded_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (item_id, stored_name, file.filename, filesize, uploaded_by, now),
-    )
-    db.commit()
-    return jsonify({"ok": True, "id": cur.lastrowid})
 
 
 @app.route("/api/download/<int:file_id>")
 def download(file_id):
-    err = require_login()
+    user, err = require_login()
     if err:
         return err
     db = get_db()
-    row = db.execute("SELECT * FROM evidence_files WHERE id = ?", (file_id,)).fetchone()
+    row = db.execute("SELECT * FROM evidence_files WHERE id=?", (file_id,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
+    if row["unit_id"] not in unit_ids_for(user):
+        return jsonify({"error": "Not permitted"}), 403
     path = os.path.join(UPLOAD_DIR, row["item_id"], row["stored_name"])
     if not os.path.exists(path):
         return jsonify({"error": "File missing on disk"}), 410
@@ -361,38 +706,86 @@ def download(file_id):
 
 @app.route("/api/evidence/<int:file_id>", methods=["DELETE"])
 def delete_evidence(file_id):
-    err = require_login(admin_only=True)
+    user, err = require_login(admin_only=True)
     if err:
         return err
     db = get_db()
-    row = db.execute("SELECT * FROM evidence_files WHERE id = ?", (file_id,)).fetchone()
+    row = db.execute("SELECT * FROM evidence_files WHERE id=?", (file_id,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
     path = os.path.join(UPLOAD_DIR, row["item_id"], row["stored_name"])
     if os.path.exists(path):
         os.remove(path)
-    db.execute("DELETE FROM evidence_files WHERE id = ?", (file_id,))
+    db.execute("DELETE FROM evidence_files WHERE id=?", (file_id,))
     db.commit()
     return jsonify({"ok": True})
 
 
-# ---------------------------------------------------------------- summary / export
+# ---------------------------------------------------------------- alerts
 
-def compute_summary(db):
-    rows = db.execute(
-        """SELECT ci.pillar, ci.category, ci.frequency, cr.status
-           FROM checklist_items ci LEFT JOIN capture_records cr ON cr.item_id = ci.id"""
-    ).fetchall()
+def compute_alerts(db):
+    """Units that should have reported a data point by now but haven't."""
+    items = db.execute("SELECT * FROM checklist_items").fetchall()
+    all_units = db.execute("SELECT * FROM units").fetchall()
+    alerts = []
+    today = date.today()
+    for item in items:
+        start, end, period_key = period_bounds(today, item["frequency"])
+        total_days = max((end - start).days, 1)
+        elapsed_pct = (today - start).days / total_days
+        if elapsed_pct < 0.6:
+            continue  # too early in the period to call it overdue
+        for unit in all_units:
+            st = compute_item_status(db, dict(item), unit["id"], today)
+            if st["status"] in ("Not started", "In progress"):
+                alerts.append({
+                    "unit_id": unit["id"], "unit_name": unit["name"], "category": unit["category"],
+                    "item_id": item["id"], "data_point": item["data_point"], "pillar": item["pillar"],
+                    "frequency": item["frequency"], "period_key": period_key,
+                    "status": st["status"], "days_into_period": (today - start).days,
+                })
+    return alerts
 
-    by_pillar = {}
+
+@app.route("/api/alerts")
+def alerts_endpoint():
+    user, err = require_login(admin_only=True)
+    if err:
+        return err
+    return jsonify(compute_alerts(get_db()))
+
+
+# ---------------------------------------------------------------- summary (dashboard cards)
+
+def compute_summary(db, unit_ids=None):
+    """Pillar/frequency tallies are counted per checklist ITEM (74 total, matching the
+    original workbook) using each item's worst-case status across the units in scope —
+    never multiplied by the number of units. Unit performance is the separate, per-unit
+    view of the same 74 items."""
+    items = db.execute("SELECT * FROM checklist_items").fetchall()
+    units_rows = db.execute("SELECT * FROM units").fetchall()
+    if unit_ids is not None:
+        units_rows = [u for u in units_rows if u["id"] in unit_ids]
+    unit_id_list = [u["id"] for u in units_rows]
+    order = {"N/A": 0, "Not started": 1, "In progress": 2, "Collected": 3, "Verified": 4}
+
+    by_pillar = {p: {s: 0 for s in STATUSES} for p in PILLARS}
     by_frequency = {}
-    for r in rows:
-        p = by_pillar.setdefault(r["pillar"], {s: 0 for s in STATUSES})
-        p[r["status"] or "Not started"] += 1
-        f = by_frequency.setdefault(r["frequency"] or "Unspecified", {"total": 0, "not_collected": 0})
+    unit_scores = {u["id"]: {"unit_name": u["name"], "category": u["category"], **{s: 0 for s in STATUSES}}
+                   for u in units_rows}
+
+    for item in items:
+        per_unit = {uid: compute_item_status(db, dict(item), uid) for uid in unit_id_list}
+        item_status = min((v["status"] for v in per_unit.values()), key=lambda s: order[s]) if per_unit else "Not started"
+
+        by_pillar[item["pillar"]][item_status] += 1
+        f = by_frequency.setdefault(item["frequency"] or "Unspecified", {"total": 0, "not_collected": 0})
         f["total"] += 1
-        if r["status"] not in ("Collected", "Verified"):
+        if item_status not in ("Collected", "Verified"):
             f["not_collected"] += 1
+
+        for uid, st in per_unit.items():
+            unit_scores[uid][st["status"]] += 1
 
     pillar_summary = []
     total = {s: 0 for s in STATUSES}
@@ -409,83 +802,76 @@ def compute_summary(db):
     denom_total = total_points - total["N/A"]
     total_pct = round(100 * (total["Collected"] + total["Verified"]) / denom_total, 1) if denom_total else 0.0
 
-    frequency_summary = [
-        {"frequency": f, "data_points": v["total"], "not_yet_collected": v["not_collected"]}
-        for f, v in by_frequency.items()
-    ]
-
-    evidence_row = db.execute(
-        """SELECT COUNT(DISTINCT ci.id) AS with_evidence
-           FROM checklist_items ci JOIN evidence_files ef ON ef.item_id = ci.id"""
-    ).fetchone()
+    unit_performance = []
+    for uid, us in unit_scores.items():
+        pts = sum(us[s] for s in STATUSES)
+        denom = pts - us["N/A"]
+        pct = round(100 * (us["Collected"] + us["Verified"]) / denom, 1) if denom else 0.0
+        unit_performance.append({"unit_id": uid, "pct_complete": pct, **us})
+    unit_performance.sort(key=lambda u: u["pct_complete"])
 
     return {
         "pillars": pillar_summary,
         "total": {"data_points": total_points, **total, "pct_complete": total_pct},
-        "frequency": frequency_summary,
-        "items_with_evidence": evidence_row["with_evidence"],
-        "total_items": total_points,
+        "frequency": [{"frequency": f, **v} for f, v in by_frequency.items()],
+        "unit_performance": unit_performance,
+        "total_items": len(items),
+        "total_units": len(units_rows),
     }
 
 
 @app.route("/api/summary")
 def summary():
-    err = require_login()
+    user, err = require_login()
     if err:
         return err
-    return jsonify(compute_summary(get_db()))
+    unit_ids = None if user["role"] == "admin" else unit_ids_for(user)
+    return jsonify(compute_summary(get_db(), unit_ids))
 
 
-@app.route("/api/export/xlsx")
-def export_xlsx():
-    err = require_login()
+# ---------------------------------------------------------------- reports
+
+from reports import build_pdf_report, build_docx_report, build_xlsx_report  # noqa: E402
+
+
+@app.route("/api/reports/<fmt>")
+def generate_report(fmt):
+    user, err = require_login(admin_only=True)
     if err:
         return err
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill
+    if fmt not in ("pdf", "docx", "xlsx"):
+        return jsonify({"error": "Unsupported format"}), 400
+    scope = request.args.get("scope", "all")
+    if scope != "all" and scope not in PILLARS:
+        return jsonify({"error": "Invalid scope"}), 400
+    unit_id = request.args.get("unit_id", type=int)
 
     db = get_db()
-    rows = db.execute(
-        """SELECT ci.*, cr.status, cr.latest_value, cr.period, cr.notes, cr.owner
-           FROM checklist_items ci LEFT JOIN capture_records cr ON cr.item_id = ci.id
-           ORDER BY ci.sort_order"""
-    ).fetchall()
+    items = db.execute("SELECT * FROM checklist_items ORDER BY sort_order").fetchall()
+    if scope != "all":
+        items = [i for i in items if i["pillar"] == scope]
+    units_rows = db.execute("SELECT u.*, r.name AS region_name FROM units u JOIN regions r ON r.id=u.region_id").fetchall()
+    if unit_id:
+        units_rows = [u for u in units_rows if u["id"] == unit_id]
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "ESG Checklist"
-    headers = ["ID", "Pillar", "Category", "Data point", "Unit", "Frequency", "Typical source",
-               "Framework / reference", "Owner", "Status", "Latest value", "Period", "Notes / evidence", "Evidence files"]
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill("solid", fgColor="DDDDDD")
+    ctx = {
+        "scope": scope, "items": [dict(i) for i in items], "units": [dict(u) for u in units_rows],
+        "generated_at": datetime.now(timezone.utc), "db": db,
+        "compute_item_status": compute_item_status,
+        "summary": compute_summary(db, [u["id"] for u in units_rows] if unit_id else None),
+    }
 
-    for r in rows:
-        ev_count = db.execute("SELECT COUNT(*) c FROM evidence_files WHERE item_id=?", (r["id"],)).fetchone()["c"]
-        ws.append([
-            r["id"], r["pillar"], r["category"], r["data_point"], r["unit"], r["frequency"],
-            r["typical_source"], r["framework_ref"], r["owner"], r["status"], r["latest_value"],
-            r["period"], r["notes"], ev_count,
-        ])
-    for col in ws.columns:
-        width = max((len(str(c.value)) for c in col if c.value), default=10)
-        ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 10), 50)
-
-    summary_data = compute_summary(db)
-    ws2 = wb.create_sheet("Summary")
-    ws2.append(["Pillar", "Data points"] + STATUSES + ["% complete"])
-    for p in summary_data["pillars"]:
-        ws2.append([p["pillar"], p["data_points"]] + [p[s] for s in STATUSES] + [p["pct_complete"]])
-    t = summary_data["total"]
-    ws2.append(["Total", t["data_points"]] + [t[s] for s in STATUSES] + [t["pct_complete"]])
-
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    fname = f"Bidvest_ESG_Checklist_{datetime.now().strftime('%Y%m%d')}.xlsx"
-    return send_file(buf, as_attachment=True, download_name=fname,
-                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    fname_base = f"Bidvest_ESG_Report_{scope}_{datetime.now().strftime('%Y%m%d')}"
+    if fmt == "xlsx":
+        buf = build_xlsx_report(ctx)
+        return send_file(buf, as_attachment=True, download_name=f"{fname_base}.xlsx",
+                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    if fmt == "docx":
+        buf = build_docx_report(ctx)
+        return send_file(buf, as_attachment=True, download_name=f"{fname_base}.docx",
+                          mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    buf = build_pdf_report(ctx)
+    return send_file(buf, as_attachment=True, download_name=f"{fname_base}.pdf", mimetype="application/pdf")
 
 
 # ---------------------------------------------------------------- static / health

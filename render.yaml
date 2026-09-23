@@ -10,9 +10,9 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: "2"
-      - key: APP_PASSWORD_TEAM
+      - key: ADMIN_USERNAME
         sync: false
-      - key: APP_PASSWORD_ADMIN
+      - key: ADMIN_PASSWORD
         sync: false
     disk:
       name: bidvest-esg-data
