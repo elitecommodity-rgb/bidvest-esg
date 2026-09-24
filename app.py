@@ -21,6 +21,13 @@ BOOTSTRAP_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 BOOTSTRAP_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "bidvest-esg-admin")
 MAX_UPLOAD_MB = 20
 
+# Shared secret for the Gilded Age Console (master admin backend) to call this
+# app's /console/* endpoints (health, export-for-backup, maintenance toggle).
+# Set as a real Render env var — never hard-coded. Empty means the console
+# integration is disabled (every /console/* call 401s).
+CONSOLE_API_KEY = os.environ.get("CONSOLE_API_KEY", "")
+APP_SLUG = "bidvest-esg"
+
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -247,6 +254,11 @@ def init_db():
             filesize INTEGER,
             uploaded_by TEXT,
             uploaded_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
         );
         """
     )
@@ -1028,6 +1040,87 @@ def generate_report(fmt):
                           mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     buf = build_pdf_report(ctx)
     return send_file(buf, as_attachment=True, download_name=f"{fname_base}.pdf", mimetype="application/pdf")
+
+
+# ---------------------------------------------------------------- Gilded Age Console
+# Integration surface for the Gilded Age master admin backend: a maintenance-mode
+# gate that can take this app offline remotely (since it has no external on/off
+# switch the way a Render service does), a health/row-count check, and a full
+# JSON export used for the console's daily backups. All three require the shared
+# CONSOLE_API_KEY header; empty key means the integration is off (safe default).
+
+MAINTENANCE_ALLOWLIST = ("/console/", "/health")
+
+def _require_console_key():
+    if not CONSOLE_API_KEY or request.headers.get("X-Console-Key") != CONSOLE_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+def _maintenance_state():
+    row = get_db().execute("SELECT value FROM app_settings WHERE key='maintenance'").fetchone()
+    if not row:
+        return {"enabled": False, "message": ""}
+    try:
+        return json.loads(row["value"])
+    except (TypeError, ValueError):
+        return {"enabled": False, "message": ""}
+
+def _maintenance_set(enabled, message):
+    db = get_db()
+    db.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('maintenance', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (json.dumps({"enabled": bool(enabled), "message": message or ""}),),
+    )
+    db.commit()
+
+_MAINTENANCE_HTML = """<!doctype html><html><head><meta charset="utf-8">
+<title>Temporarily unavailable</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{{font-family:-apple-system,'IBM Plex Sans',sans-serif;background:#141549;color:#fbfbf8;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:32px}}
+.box{{max-width:520px}} h1{{font-size:30px;margin-bottom:16px}} p{{font-size:19px;color:#c7cfe0;line-height:1.5}}</style>
+</head><body><div class="box"><h1>Temporarily unavailable</h1><p>{message}</p></div></body></html>"""
+
+@app.before_request
+def _console_maintenance_gate():
+    if request.path.startswith(MAINTENANCE_ALLOWLIST) or request.path == "/health":
+        return None
+    state = _maintenance_state()
+    if state.get("enabled"):
+        msg = state.get("message") or "This app is temporarily unavailable for maintenance. Please check back shortly."
+        return _MAINTENANCE_HTML.format(message=msg), 503
+
+@app.route("/console/health")
+def console_health():
+    err = _require_console_key()
+    if err:
+        return err
+    db = get_db()
+    counts = {}
+    for t in ("units", "users", "entries", "evidence_files"):
+        counts[t] = db.execute(f"SELECT COUNT(*) c FROM {t}").fetchone()["c"]
+    return jsonify({"status": "ok", "app": APP_SLUG, "counts": counts, "maintenance": _maintenance_state()})
+
+@app.route("/console/export")
+def console_export():
+    err = _require_console_key()
+    if err:
+        return err
+    db = get_db()
+    tables = ["checklist_items", "regions", "units", "users", "entries", "period_flags", "unit_item_na", "evidence_files"]
+    dump = {t: [dict(r) for r in db.execute(f"SELECT * FROM {t}").fetchall()] for t in tables}
+    return jsonify({"app": APP_SLUG, "exported_at": datetime.now(timezone.utc).isoformat(), "tables": dump})
+
+@app.route("/console/maintenance", methods=["GET", "POST"])
+def console_maintenance():
+    err = _require_console_key()
+    if err:
+        return err
+    if request.method == "GET":
+        return jsonify(_maintenance_state())
+    data = request.get_json(force=True, silent=True) or {}
+    _maintenance_set(data.get("enabled"), data.get("message"))
+    return jsonify(_maintenance_state())
 
 
 # ---------------------------------------------------------------- static / health
