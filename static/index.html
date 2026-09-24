@@ -195,6 +195,10 @@
               <input id="capture-file" type="file" accept="image/*,application/pdf,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.eml,.msg" class="hidden" onchange="onCaptureFilePicked(this)">
               <span id="capture-file-name" style="font-size:12.5px;color:var(--grey);">No file chosen</span>
             </div>
+            <div id="capture-ai-toggle-row" class="hidden" style="margin-top:10px;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="capture-ai-toggle" style="width:auto;">
+              <label for="capture-ai-toggle" style="margin:0;font-weight:normal;font-size:12.5px;">Use AI reading (better for busy or handwritten documents)</label>
+            </div>
             <div class="hint" style="margin-top:10px;margin-bottom:4px;">Or just describe it in your own words:</div>
             <textarea id="capture-text" placeholder='e.g. "used 300L diesel Tuesday" or "42.5kg food waste this week"'></textarea>
             <button type="button" class="btn" style="margin-top:8px;" onclick="analyzeCaptureText()">Read this</button>
@@ -452,6 +456,10 @@ async function boot(){
   document.getElementById('unit-sub').textContent = STATE.unit ? `${STATE.unit.name} — ${STATE.unit.category}` : 'ESG data checklist & evidence capture';
   renderNav();
   STATE.meta = await api('/api/meta');
+  if (STATE.meta && STATE.meta.ai_vision_available) {
+    const row = document.getElementById('capture-ai-toggle-row');
+    if (row) row.classList.remove('hidden');
+  }
   await Promise.all([loadChecklist(), loadUnits()]);
   populateEntryForm();
   const today = new Date().toISOString().slice(0,10);
@@ -516,6 +524,8 @@ async function runCapture({ file, text }){
   const fd = new FormData();
   if (file) fd.append('file', file);
   if (text) fd.append('text', text);
+  const aiToggle = document.getElementById('capture-ai-toggle');
+  if (file && aiToggle && aiToggle.checked) fd.append('mode', 'ai');
   try {
     const res = await fetch('/api/extract', { method: 'POST', body: fd });
     if (res.status === 401) { showLogin(); return; }
@@ -537,14 +547,15 @@ function renderCaptureCandidates(data){
   const candBox = document.getElementById('capture-candidates');
   const candidates = data.candidates || [];
   if (data.entry_date) document.getElementById('capture-date').value = data.entry_date;
+  const aiPrefix = data.ai_used ? '(Read with AI) ' : (data.ai_unavailable ? '(AI reading not set up — used free reading instead) ' : '');
 
   if (!candidates.length) {
-    statusEl.textContent = data.message || "Read it, but couldn't confidently match a data point — try Enter manually below.";
+    statusEl.textContent = aiPrefix + (data.message || "Read it, but couldn't confidently match a data point — try Enter manually below.");
     statusEl.style.color = '#b45309';
     candBox.innerHTML = '';
     return;
   }
-  statusEl.textContent = `Found ${candidates.length} possible match${candidates.length>1?'es':''} — review, adjust and save the ones that are right.`;
+  statusEl.textContent = aiPrefix + `Found ${candidates.length} possible match${candidates.length>1?'es':''} — review, adjust and save the ones that are right.`;
   statusEl.style.color = '#146c38';
 
   candBox.innerHTML = candidates.map((c, idx) => `
