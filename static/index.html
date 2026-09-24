@@ -178,6 +178,7 @@
               <span id="entry-file-name" style="font-size:12.5px;color:var(--grey);">No file chosen</span>
             </div>
             <div class="hint">Take a photo of a bill, certificate or weighbridge slip right now, or attach an existing file.</div>
+            <div class="hint" id="entry-extract-status"></div>
           </div>
         </div>
         <button class="btn primary" onclick="submitEntry()">Log entry</button>
@@ -366,7 +367,50 @@ function onEvidencePicked(input){
   const other = input.id === 'entry-file' ? document.getElementById('entry-file-camera') : document.getElementById('entry-file');
   other.value = '';
   document.getElementById('entry-file-name').textContent = input.files[0].name;
+  autoExtractEvidence(input.files[0]);
 }
+
+async function autoExtractEvidence(file){
+  const statusEl = document.getElementById('entry-extract-status');
+  statusEl.textContent = 'Reading document…';
+  statusEl.style.color = 'var(--grey)';
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('item_id', document.getElementById('entry-item').value);
+  try {
+    const res = await fetch('/api/extract', {method:'POST', body: fd});
+    if (res.status === 401) { showLogin(); return; }
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      statusEl.textContent = (data && data.message) || 'Couldn\'t auto-read this file — please fill in manually.';
+      statusEl.style.color = '#b45309';
+      return;
+    }
+    const valueEl = document.getElementById('entry-value');
+    const dateEl = document.getElementById('entry-date');
+    const notesEl = document.getElementById('entry-notes');
+    const filled = [];
+    if (data.value_text && !valueEl.value.trim()) { valueEl.value = data.value_text; filled.push('value'); }
+    if (data.entry_date) { dateEl.value = data.entry_date; filled.push('date'); }
+    if (data.notes && !notesEl.value.trim()) { notesEl.value = data.notes; filled.push('notes'); }
+    if (filled.length) {
+      statusEl.textContent = `Auto-filled ${filled.join(', ')} from the evidence — please check before saving.`;
+      statusEl.style.color = '#146c38';
+    } else {
+      statusEl.textContent = 'Read the file but couldn\'t confidently match a value — please fill in manually.';
+      statusEl.style.color = '#b45309';
+    }
+  } catch(e){
+    statusEl.textContent = 'Could not reach the server to read this file.';
+    statusEl.style.color = '#c0392b';
+  }
+}
+
+document.getElementById('entry-item').addEventListener('change', () => {
+  if (selectedEvidenceInput && selectedEvidenceInput.files.length) {
+    autoExtractEvidence(selectedEvidenceInput.files[0]);
+  }
+});
 
 async function submitEntry(){
   const confirmBox = document.getElementById('entry-confirm');
@@ -389,6 +433,7 @@ async function submitEntry(){
     document.getElementById('entry-file').value = '';
     document.getElementById('entry-file-camera').value = '';
     document.getElementById('entry-file-name').textContent = 'No file chosen';
+    document.getElementById('entry-extract-status').textContent = '';
     selectedEvidenceInput = null;
     loadRecentEntries();
   } catch(e){
