@@ -279,6 +279,7 @@
         </div>
       </div>
       <div class="tabs" id="pillar-tabs"></div>
+      <div id="category-legend" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--grey);"></div>
       <input type="search" id="search-box" placeholder="Search data points..." oninput="renderStatus()" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;width:280px;margin-bottom:14px;">
       <div id="status-container"></div>
     </div>
@@ -726,6 +727,7 @@ async function loadStatus(){
   const url = '/api/status' + (unitId ? `?unit_id=${unitId}` : '');
   STATE.statusItems = await api(url);
   renderPillarTabs();
+  renderCategoryLegend();
   renderStatus();
 }
 
@@ -735,6 +737,12 @@ function renderPillarTabs(){
     const count = p==='All' ? STATE.statusItems.length : STATE.statusItems.filter(i=>i.pillar===p).length;
     return `<div class="tab ${p===STATE.pillar?'active':''}" onclick="setPillar('${p}')">${p} <span class="count">${count}</span></div>`;
   }).join('');
+}
+
+const CATEGORY_LEGEND_ORDER = ['Waste','Energy','Water','People','Safety','Compliance'];
+function renderCategoryLegend(){
+  document.getElementById('category-legend').innerHTML = CATEGORY_LEGEND_ORDER.map(g =>
+    `<span><span class="cat-group-dot cat-${g}"></span>${g}</span>`).join('');
 }
 function setPillar(p){ STATE.pillar = p; renderPillarTabs(); renderStatus(); }
 function statusClass(s){ return 'status-' + (s||'Not started').replace(/[^A-Za-z]/g,'-'); }
