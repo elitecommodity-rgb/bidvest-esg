@@ -43,7 +43,9 @@ def vision_extract_text(file_bytes, ext, api_key, model=None):
             }],
         )
         return "".join(getattr(b, "text", "") for b in resp.content)
-    except Exception:
+    except Exception as e:
+        import sys
+        print(f"[vision_extract_text] {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return ""
 
 
