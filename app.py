@@ -10,7 +10,7 @@ from io import BytesIO
 from flask import Flask, g, jsonify, request, send_file, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from extract import extract_text, analyze_text, analyze_text_multi
+from extract import extract_text, analyze_text, analyze_text_multi, vision_extract_text
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "bidvest_esg.db"))
@@ -500,7 +500,8 @@ def meta():
         return err
     return jsonify({"kitchen_categories": KITCHEN_CATEGORIES, "pillars": PILLARS,
                      "entry_frequencies": ENTRY_FREQUENCIES,
-                     "category_groups": CATEGORY_GROUPS, "category_group_order": CATEGORY_GROUP_ORDER})
+                     "category_groups": CATEGORY_GROUPS, "category_group_order": CATEGORY_GROUP_ORDER,
+                     "ai_vision_available": bool(os.environ.get("ANTHROPIC_API_KEY"))})
 
 
 # ---------------------------------------------------------------- checklist / status
@@ -727,6 +728,9 @@ def extract_from_evidence():
 
     has_file = "file" in request.files and request.files["file"].filename
     raw_text = request.form.get("text")
+    want_ai = request.form.get("mode") == "ai"
+    ai_used = False
+    ai_unavailable = False
 
     if has_file:
         file = request.files["file"]
@@ -737,10 +741,21 @@ def extract_from_evidence():
         if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
             return jsonify({"error": "File too large"}), 400
         source_name = file.filename
-        try:
-            text = extract_text(file_bytes, ext)
-        except Exception:
-            text = ""
+        text = ""
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if want_ai and api_key:
+            try:
+                text = vision_extract_text(file_bytes, ext, api_key)
+                ai_used = bool(text.strip())
+            except Exception:
+                text = ""
+        elif want_ai and not api_key:
+            ai_unavailable = True
+        if not text.strip():
+            try:
+                text = extract_text(file_bytes, ext)
+            except Exception:
+                text = ""
     elif raw_text and raw_text.strip():
         text = raw_text.strip()
         source_name = "typed note"
@@ -761,6 +776,9 @@ def extract_from_evidence():
             "value_text": None, "value_confidence": None, "entry_date": None,
             "notes": None, "candidates": [], "raw_text": "",
         }
+    result["ai_used"] = ai_used
+    if ai_unavailable:
+        result["ai_unavailable"] = True
     return jsonify(result)
 
 

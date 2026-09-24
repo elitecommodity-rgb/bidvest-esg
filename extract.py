@@ -3,6 +3,50 @@ import re
 from datetime import datetime
 
 
+# ----------------------------------------------------------------- AI vision (optional upgrade)
+
+_VISION_MEDIA_TYPES = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "gif": "image/gif", "webp": "image/webp",
+}
+
+
+def vision_extract_text(file_bytes, ext, api_key, model=None):
+    """Ask Claude to read an image via its vision API — a stronger alternative to the
+    free local OCR pipeline for busy or low-quality documents (several line items on
+    one page, handwriting, glare, small print). Returns "" on anything it can't handle
+    (unsupported format, no api_key, an API error) so the caller always has a clean
+    signal to fall back to local OCR — this is an optional upgrade, never a dependency."""
+    media_type = _VISION_MEDIA_TYPES.get((ext or "").lower())
+    if not media_type or not api_key:
+        return ""
+    try:
+        import base64
+        from anthropic import Anthropic
+
+        client = Anthropic(api_key=api_key)
+        b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
+        resp = client.messages.create(
+            model=model or "claude-sonnet-5",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
+                    {"type": "text", "text": (
+                        "Transcribe every readable piece of text in this image verbatim — all "
+                        "labels, numbers, units, dates and totals — as plain text, one item per "
+                        "line where possible. Do not summarize, interpret, or omit anything. If "
+                        "nothing is readable, reply with nothing."
+                    )},
+                ],
+            }],
+        )
+        return "".join(getattr(b, "text", "") for b in resp.content)
+    except Exception:
+        return ""
+
+
 # ----------------------------------------------------------------- text pull
 
 def _pdf_text(file_bytes):
