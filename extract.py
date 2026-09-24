@@ -1,11 +1,3 @@
-"""
-Evidence auto-read: pulls a suggested value, date and notes out of an
-uploaded photo / PDF / document so the capture form can pre-fill itself.
-
-Best-effort only — every result is meant to be reviewed by the person
-before they save the entry, never trusted blind. Nothing here should ever
-raise past extract_evidence(); failures degrade to "couldn't read it".
-"""
 import io
 import re
 from datetime import datetime
@@ -183,8 +175,19 @@ def find_date(text):
 
 # ---------------------------------------------------------------- value find
 
-_NUMBER = r"([-+]?\d{1,3}(?:[ ,]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)"
+# Grouped-thousands alternative requires at least one real separator group (+, not *) so an
+# ungrouped number like "2026" falls through to the plain-digit alternative instead of being
+# truncated to its first 1-3 digits (regex alternation picks the first alternative that matches
+# at all, not the longest — a `*` here previously let "2026" wrongly match as just "202").
+_NUMBER = r"([-+]?\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 _VALUE_KEYWORDS = ["total", "consumption", "usage", "amount due", "amount", "net", "reading", "quantity", "volume"]
+
+
+# Unit sub-tokens that label the KIND of value expected (a date, a status word, a name)
+# rather than a quantity — matching a stray number near the word "date" or "status" itself
+# (e.g. a year inside a nearby date) produces a nonsense "value", so these are skipped as
+# match targets. The real date is already captured separately by find_date().
+_PLACEHOLDER_UNIT_TOKENS = {"date", "status", "name", "topic", "y/n", "yes", "no", "level", "y", "n"}
 
 
 def find_value(text, unit_field):
@@ -192,7 +195,7 @@ def find_value(text, unit_field):
 
     # 1. number directly touching a known unit token -> high confidence
     for unit in units:
-        if unit.lower() in ("yes", "no"):
+        if unit.lower() in _PLACEHOLDER_UNIT_TOKENS:
             continue
         u = re.escape(unit)
         m = re.search(_NUMBER + r"\s*" + u + r"\b", text, re.IGNORECASE)
@@ -220,28 +223,23 @@ def find_value(text, unit_field):
 
 # --------------------------------------------------------------------- notes
 
-def build_notes(text, filename):
+def build_notes(text, source_name):
     cleaned = re.sub(r"\s+", " ", text).strip()
     if not cleaned:
         return None
     snippet = cleaned[:280] + ("…" if len(cleaned) > 280 else "")
-    return f"Auto-extracted from {filename}: “{snippet}”"
+    return f'Auto-extracted from {source_name}: "{snippet}"'
 
 
-# --------------------------------------------------------------------- entry
+# ------------------------------------------------------------ single-item analysis
 
-def extract_evidence(file_bytes, filename, item):
-    """item: dict-like checklist row (needs 'unit'), or None."""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    try:
-        text = extract_text(file_bytes, ext)
-    except Exception:
-        text = ""
-
+def analyze_text(text, source_name, item):
+    """Core analysis against ONE checklist item (dict-like row, needs 'unit'), or
+    None for a date/notes-only read with no value matching."""
     if not text or not text.strip():
         return {
             "ok": False,
-            "message": "Couldn't read any text from this file — please fill in the fields manually.",
+            "message": "Couldn't read anything from this — please fill in the fields manually.",
             "value_text": None,
             "value_confidence": None,
             "entry_date": None,
@@ -252,7 +250,7 @@ def extract_evidence(file_bytes, filename, item):
     entry_date = find_date(text)
     unit_field = (item or {}).get("unit") if item else None
     value_text, confidence = find_value(text, unit_field)
-    notes = build_notes(text, filename)
+    notes = build_notes(text, source_name)
 
     return {
         "ok": True,
@@ -260,5 +258,109 @@ def extract_evidence(file_bytes, filename, item):
         "value_confidence": confidence,
         "entry_date": entry_date,
         "notes": notes,
+        "raw_text": text[:4000],
+    }
+
+
+def extract_evidence(file_bytes, filename, item):
+    """Back-compat wrapper: read a file, then analyze it against one item."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    try:
+        text = extract_text(file_bytes, ext)
+    except Exception:
+        text = ""
+    return analyze_text(text, filename, item)
+
+
+# ------------------------------------------------------------- multi-item analysis
+
+_KEYWORD_STOPWORDS = {
+    "and", "the", "of", "by", "or", "per", "in", "on", "for", "with", "to", "a", "an",
+    "from", "that", "this", "their", "number", "total", "share", "level", "was", "are",
+    "its", "has", "had", "not", "but", "you", "all", "any", "via", "into", "each",
+}
+
+
+def _item_keywords(item):
+    # {3,} (not {4,}) so short but meaningful acronyms like "LPG" still count as keywords —
+    # the expanded stopword list above keeps this from pulling in ordinary short words.
+    words = re.findall(r"[a-zA-Z]{3,}", f"{item.get('data_point','')} {item.get('category','')}")
+    return {w.lower() for w in words if w.lower() not in _KEYWORD_STOPWORDS}
+
+
+def analyze_text_multi(text, source_name, items):
+    """One photo/note -> many fields: scan the same text against every checklist
+    item and return every plausible match as a candidate entry, instead of
+    requiring the person to pick a single data point up front. Each candidate is
+    a suggestion for the person to confirm, edit or discard, never auto-saved.
+
+    To avoid every same-unit item (e.g. a dozen different "kg" data points)
+    flooding the review list with the same one number, a match is only
+    "high confidence" when it comes from a line/sentence that also contains one
+    of that item's own keywords (drawn from its data_point + category text) —
+    so "LPG used: 18 kg" anchors to the LPG item, not to every kg-denominated
+    item in the checklist. When an item's unit is unique across the whole
+    checklist there's no ambiguity to anchor against, so a whole-text match is
+    still allowed, just demoted to medium confidence. Deliberately capped at 12
+    candidates so a very generic document doesn't overwhelm the confirmation
+    screen."""
+    if not text or not text.strip():
+        return {
+            "ok": False,
+            "message": "Couldn't read anything from this — please try a clearer photo, or enter it manually.",
+            "entry_date": None,
+            "notes": None,
+            "candidates": [],
+            "raw_text": "",
+        }
+
+    entry_date = find_date(text)
+    notes = build_notes(text, source_name)
+
+    # Split on newlines and sentence-ending periods (a period followed by whitespace),
+    # never a bare "." — splitting on every "." would cut a decimal value like "42.5"
+    # into "42" and "5" as separate lines.
+    lines = [l for l in re.split(r"\n|\.\s+", text) if l.strip()]
+    unit_counts = {}
+    for item in items:
+        unit_counts[item.get("unit")] = unit_counts.get(item.get("unit"), 0) + 1
+
+    candidates = []
+    for item in items:
+        kws = _item_keywords(item)
+        value_text, confidence = None, None
+        for line in lines:
+            if kws and any(kw in line.lower() for kw in kws):
+                value_text, confidence = find_value(line, item.get("unit"))
+                if value_text:
+                    break
+        if not value_text and unit_counts.get(item.get("unit"), 0) == 1:
+            value_text, confidence = find_value(text, item.get("unit"))
+            if confidence == "high":
+                confidence = "medium"  # unanchored — demote so it doesn't outrank a real keyword match
+        if not value_text:
+            continue
+        candidates.append({
+            "item_id": item["id"],
+            "data_point": item["data_point"],
+            "pillar": item["pillar"],
+            "category": item["category"],
+            "unit": item.get("unit"),
+            "value_text": value_text,
+            "value_confidence": confidence,
+        })
+
+    # highest-confidence matches first, capped so the review list stays short
+    order = {"high": 0, "medium": 1, None: 2}
+    candidates.sort(key=lambda c: order.get(c["value_confidence"], 2))
+    candidates = candidates[:12]
+
+    return {
+        "ok": bool(candidates),
+        "message": None if candidates else
+            "Read the text but couldn't confidently match it to a data point — please enter it manually.",
+        "entry_date": entry_date,
+        "notes": notes,
+        "candidates": candidates,
         "raw_text": text[:4000],
     }

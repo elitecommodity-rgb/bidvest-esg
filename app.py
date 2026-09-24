@@ -10,7 +10,7 @@ from io import BytesIO
 from flask import Flask, g, jsonify, request, send_file, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from extract import extract_evidence
+from extract import extract_text, analyze_text, analyze_text_multi
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "bidvest_esg.db"))
@@ -32,6 +32,28 @@ STATUSES = ["Not started", "In progress", "Collected", "Verified", "N/A"]
 ENTRY_FREQUENCIES = ["Daily", "Weekly", "Monthly"]
 KITCHEN_CATEGORIES = ["School", "Hospital", "Corporate", "Retirement Village", "Learning Academy", "Other"]
 PILLARS = ["Environmental", "Social", "Governance"]
+
+# Collapses the 74 checklist items' ~15 sub-categories into 6 plain groups for the
+# simplified capture/dashboard surfaces site users see day to day. Framework codes
+# (GRI/King/IFRS) and the full category breakdown remain available in Bidvest Admin
+# and in generated reports — this mapping never touches stored data, display only.
+CATEGORY_GROUPS = {
+    "Energy & climate": "Energy",
+    "Water": "Water",
+    "Waste & food waste": "Waste",
+    "Packaging & sourcing": "Waste",
+    "Workforce": "People",
+    "Training & development": "People",
+    "Health & safety": "Safety",
+    "Food safety & customer": "Safety",
+    "Suppliers & community": "People",
+    "Transformation & compliance": "Compliance",
+    "Oversight & reporting": "Compliance",
+    "Ethics & conduct": "Compliance",
+    "Supply chain governance": "Compliance",
+    "Data integrity & assurance": "Compliance",
+}
+CATEGORY_GROUP_ORDER = ["Waste", "Energy", "Water", "People", "Safety", "Compliance"]
 
 # ---------------------------------------------------------------- helpers
 
@@ -178,6 +200,7 @@ def init_db():
             name TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'site',
             unit_id INTEGER REFERENCES units(id),
+            pin_hash TEXT,
             created_at TEXT
         );
 
@@ -227,6 +250,12 @@ def init_db():
         );
         """
     )
+    # Migration for databases created before pin_hash existed (ALTER TABLE has no
+    # IF NOT EXISTS in SQLite) — safe to ignore if the column is already there.
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN pin_hash TEXT")
+    except sqlite3.OperationalError:
+        pass
     db.commit()
 
     with open(CHECKLIST_JSON) as f:
@@ -302,6 +331,45 @@ def login():
         u = db.execute("SELECT * FROM units WHERE id=?", (row["unit_id"],)).fetchone()
         unit = dict(u) if u else None
     return jsonify({"role": row["role"], "name": row["name"], "username": row["username"], "unit": unit})
+
+
+@app.route("/api/pin-units")
+def pin_units():
+    """Public (no login) list of units that have at least one site PIN set, so the
+    login screen can offer a unit picker before authenticating. Only id/name/category
+    are exposed — nothing sensitive."""
+    db = get_db()
+    rows = db.execute(
+        """SELECT DISTINCT u.id, u.name, u.category, r.name AS region_name
+           FROM units u JOIN regions r ON r.id = u.region_id
+           JOIN users us ON us.unit_id = u.id
+           WHERE us.role = 'site' AND us.pin_hash IS NOT NULL
+           ORDER BY r.name, u.name"""
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/login/pin", methods=["POST"])
+def login_pin():
+    """Fast unlock for site staff: pick your unit, enter the short PIN Bidvest Admin
+    gave you — no username/password to remember away from a desk."""
+    data = request.get_json(force=True, silent=True) or {}
+    unit_id = data.get("unit_id")
+    pin = (data.get("pin") or "").strip()
+    if not unit_id or not pin:
+        return jsonify({"error": "Unit and PIN are required"}), 400
+    db = get_db()
+    candidates = db.execute(
+        "SELECT * FROM users WHERE unit_id=? AND role='site' AND pin_hash IS NOT NULL",
+        (unit_id,),
+    ).fetchall()
+    match = next((r for r in candidates if check_password_hash(r["pin_hash"], pin)), None)
+    if not match:
+        return jsonify({"error": "Incorrect PIN for that unit"}), 401
+    session["user_id"] = match["id"]
+    u = db.execute("SELECT * FROM units WHERE id=?", (unit_id,)).fetchone()
+    return jsonify({"role": match["role"], "name": match["name"], "username": match["username"],
+                    "unit": dict(u) if u else None})
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -393,7 +461,8 @@ def users_endpoint():
     db = get_db()
     if request.method == "GET":
         rows = db.execute(
-            """SELECT us.id, us.username, us.name, us.role, us.unit_id, u.name AS unit_name
+            """SELECT us.id, us.username, us.name, us.role, us.unit_id, u.name AS unit_name,
+                      (us.pin_hash IS NOT NULL) AS has_pin
                FROM users us LEFT JOIN units u ON u.id = us.unit_id ORDER BY us.name"""
         ).fetchall()
         return jsonify([dict(r) for r in rows])
@@ -403,16 +472,20 @@ def users_endpoint():
     password = data.get("password") or ""
     role = data.get("role") if data.get("role") in ("admin", "site") else "site"
     unit_id = data.get("unit_id")
+    pin = (data.get("pin") or "").strip()
     if not username or not name or len(password) < 6:
         return jsonify({"error": "username, name and a password of 6+ characters are required"}), 400
     if role == "site" and not unit_id:
         return jsonify({"error": "A site user must be assigned to a unit"}), 400
+    if pin and (not pin.isdigit() or not (4 <= len(pin) <= 6)):
+        return jsonify({"error": "PIN must be 4-6 digits"}), 400
+    pin_hash = generate_password_hash(pin) if pin else None
     try:
         db.execute(
-            """INSERT INTO users (username, password_hash, name, role, unit_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO users (username, password_hash, name, role, unit_id, pin_hash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (username, generate_password_hash(password), name, role, unit_id if role == "site" else None,
-             datetime.now(timezone.utc).isoformat()),
+             pin_hash if role == "site" else None, datetime.now(timezone.utc).isoformat()),
         )
         db.commit()
     except sqlite3.IntegrityError:
@@ -426,7 +499,8 @@ def meta():
     if err:
         return err
     return jsonify({"kitchen_categories": KITCHEN_CATEGORIES, "pillars": PILLARS,
-                     "entry_frequencies": ENTRY_FREQUENCIES})
+                     "entry_frequencies": ENTRY_FREQUENCIES,
+                     "category_groups": CATEGORY_GROUPS, "category_group_order": CATEGORY_GROUP_ORDER})
 
 
 # ---------------------------------------------------------------- checklist / status
@@ -525,6 +599,7 @@ def status_endpoint():
         item["status_summary"] = worst
         item["per_unit"] = {str(k): v for k, v in per_unit.items()}
         item["evidence_count"] = evidence_count
+        item["category_group"] = CATEGORY_GROUPS.get(item["category"], "Other")
         result.append(item)
     return jsonify(result)
 
@@ -630,39 +705,61 @@ def add_entry():
 
 @app.route("/api/extract", methods=["POST"])
 def extract_from_evidence():
-    """Reads an uploaded evidence file (photo/PDF/doc) and suggests a value,
-    date and notes for the currently-selected data point. Best-effort — the
-    caller always treats the result as a suggestion to review, not a fact."""
+    """Central capture point: reads an uploaded photo/PDF/doc OR a typed note and
+    suggests what to fill in. With an item_id, behaves as before (one data point,
+    one suggested value/date/notes). Without one, scans every checklist item's
+    declared unit against the same text and returns every plausible match as a
+    candidate entry — so one delivery note or utility bill can pre-fill several
+    data points at once instead of forcing a data point to be picked first.
+    Always best-effort — every result is a suggestion for the person to review,
+    never trusted blind or auto-saved."""
     user, err = require_login()
     if err:
         return err
-    if "file" not in request.files or not request.files["file"].filename:
-        return jsonify({"error": "No file provided"}), 400
-    file = request.files["file"]
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({"error": "Unsupported file type"}), 400
-
-    file_bytes = file.read()
-    if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
-        return jsonify({"error": "File too large"}), 400
+    db = get_db()
 
     item = None
     item_id = request.form.get("item_id")
     if item_id:
-        db = get_db()
         row = db.execute("SELECT * FROM checklist_items WHERE id=?", (item_id,)).fetchone()
         if row:
             item = dict(row)
 
+    has_file = "file" in request.files and request.files["file"].filename
+    raw_text = request.form.get("text")
+
+    if has_file:
+        file = request.files["file"]
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            return jsonify({"error": "Unsupported file type"}), 400
+        file_bytes = file.read()
+        if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
+            return jsonify({"error": "File too large"}), 400
+        source_name = file.filename
+        try:
+            text = extract_text(file_bytes, ext)
+        except Exception:
+            text = ""
+    elif raw_text and raw_text.strip():
+        text = raw_text.strip()
+        source_name = "typed note"
+    else:
+        return jsonify({"error": "No file or text provided"}), 400
+
     try:
-        result = extract_evidence(file_bytes, file.filename, item)
+        if item:
+            result = analyze_text(text, source_name, item)
+        else:
+            all_items = [dict(r) for r in
+                         db.execute("SELECT * FROM checklist_items ORDER BY sort_order").fetchall()]
+            result = analyze_text_multi(text, source_name, all_items)
     except Exception:
         result = {
             "ok": False,
-            "message": "Couldn't process this file — please fill in the fields manually.",
+            "message": "Couldn't process this — please fill in the fields manually.",
             "value_text": None, "value_confidence": None, "entry_date": None,
-            "notes": None, "raw_text": "",
+            "notes": None, "candidates": [], "raw_text": "",
         }
     return jsonify(result)
 
