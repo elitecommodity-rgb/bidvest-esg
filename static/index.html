@@ -6,7 +6,7 @@
 <title>Bidvest ESG</title>
 <style>
   :root{
-    --navy:#141549; --navy2:#4a99d1; --gold:#c9896d; --green:#1f8a4c;
+    --navy:#141549; --navy2:#4a99d1; --gold:#c9896d; --forest:#2f6e4f; --green:#1f8a4c;
     --amber:#c98a12; --red:#c0392b; --grey:#6b7280; --bg:#f4f6f9; --card:#ffffff;
     --border:#e2e6ec;
   }
@@ -23,10 +23,13 @@
 
   #login-screen{max-width:380px;margin:80px auto;background:var(--card);padding:32px;border-radius:12px;box-shadow:0 8px 30px rgba(10,20,40,.08);}
   #login-screen h2{margin-top:0;color:var(--navy);}
-  #login-screen input{width:100%;padding:10px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:6px;font-size:14px;}
+  #login-screen input, #login-screen select{width:100%;padding:10px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:6px;font-size:14px;}
   #login-screen button{width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;}
   #login-screen button:hover{background:#1c1f61;}
   #login-error{color:var(--red);font-size:13px;margin-bottom:10px;min-height:16px;}
+  .login-modes{display:flex;gap:8px;margin-bottom:16px;}
+  .login-mode-btn{flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:#f4f6f9;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--navy);}
+  .login-mode-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
 
   main{max-width:1180px;margin:0 auto;padding:20px 24px 60px;}
   .navtabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
@@ -89,6 +92,20 @@
   .risk-mid{color:var(--amber);font-weight:700;}
   .risk-high{color:var(--red);font-weight:700;}
 
+  .cat-group-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:7px;}
+  .cat-Waste{background:var(--forest);} .cat-Energy{background:var(--navy2);} .cat-Water{background:#2f8fb0;}
+  .cat-People{background:var(--gold);} .cat-Safety{background:var(--amber);} .cat-Compliance{background:var(--navy);}
+  .cat-Other{background:var(--grey);}
+
+  .candidate-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;flex-wrap:wrap;}
+  .candidate-row .cand-main{flex:1;min-width:180px;}
+  .candidate-row .cand-main .name{font-weight:600;font-size:13.5px;color:var(--navy);}
+  .candidate-row .cand-main .meta{font-size:11.5px;color:var(--grey);}
+  .candidate-row input[type=text]{width:130px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;}
+  .conf-high{color:var(--green);font-size:11px;font-weight:700;}
+  .conf-medium{color:var(--amber);font-size:11px;font-weight:700;}
+  .manual-toggle-row{display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;}
+
   .hidden{display:none !important;}
   @media (max-width:640px){
     header{padding:14px;}
@@ -106,10 +123,24 @@
 <div id="login-screen">
   <h2>Bidvest ESG</h2>
   <p style="font-size:13px;color:#6b7280;margin-top:-6px;">ESG data checklist &amp; evidence capture</p>
+  <div class="login-modes">
+    <div class="login-mode-btn active" id="mode-btn-password" onclick="setLoginMode('password')">Username &amp; password</div>
+    <div class="login-mode-btn" id="mode-btn-pin" onclick="setLoginMode('pin')">Site PIN</div>
+  </div>
   <div id="login-error"></div>
-  <input id="login-username" type="text" placeholder="Username" autocomplete="username">
-  <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
-  <button onclick="doLogin()">Log in</button>
+
+  <div id="login-password-fields">
+    <input id="login-username" type="text" placeholder="Username" autocomplete="username">
+    <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="doLogin()">Log in</button>
+  </div>
+
+  <div id="login-pin-fields" class="hidden">
+    <select id="login-pin-unit"><option value="">Loading units…</option></select>
+    <input id="login-pin-code" type="tel" inputmode="numeric" maxlength="6" placeholder="4-6 digit PIN">
+    <button onclick="doPinLogin()">Unlock</button>
+    <p class="hint" style="margin-top:8px;">No unit listed here yet? Ask Bidvest Admin to set a PIN for your unit, or use username &amp; password.</p>
+  </div>
 </div>
 
 <div id="app" class="hidden">
@@ -130,58 +161,100 @@
   <main>
     <div class="navtabs" id="navtabs"></div>
 
-    <!-- ===================== ADD ENTRY ===================== -->
+    <!-- ===================== ADD EVIDENCE (central capture point) ===================== -->
     <div class="view" id="view-entry">
       <div class="confirm-banner" id="entry-confirm"></div>
       <div class="error-banner" id="entry-error"></div>
+
       <div class="card">
-        <h3>Log a data entry</h3>
-        <p class="hint">Pick the unit and the exact data point this entry belongs to. Repeated daily/weekly/monthly entries for the same data point are automatically summed or averaged into the current reporting period.</p>
+        <h3>Add evidence</h3>
+        <p class="hint">Take a photo, upload a file, or just type what happened — this reads it and matches it to the right data point(s) for your unit. Nothing saves until you confirm below.</p>
         <div class="field-row">
           <div>
             <label>Unit</label>
-            <select id="entry-unit"></select>
-          </div>
-          <div>
-            <label>Data point</label>
-            <select id="entry-item"></select>
+            <select id="capture-unit"></select>
           </div>
           <div>
             <label>Entry frequency</label>
-            <select id="entry-frequency">
+            <select id="capture-frequency">
               <option>Daily</option><option selected>Weekly</option><option>Monthly</option>
             </select>
           </div>
           <div>
             <label>Date</label>
-            <input id="entry-date" type="date">
+            <input id="capture-date" type="date">
           </div>
         </div>
         <div class="field-row">
-          <div>
-            <label>Value</label>
-            <input id="entry-value" type="text" placeholder="e.g. 1 240 kg, 45%, Yes">
-          </div>
-          <div style="grid-column:span 2;">
-            <label>Notes</label>
-            <textarea id="entry-notes" placeholder="Context, evidence location, calculation method..."></textarea>
-          </div>
-        </div>
-        <div class="field-row">
-          <div>
-            <label>Evidence (optional)</label>
+          <div style="grid-column:1/-1;">
+            <label>Photo or file</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <button type="button" class="btn" onclick="document.getElementById('entry-file-camera').click()">📷 Take photo</button>
-              <input id="entry-file-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="onEvidencePicked(this)">
-              <button type="button" class="btn" onclick="document.getElementById('entry-file').click()">Choose file</button>
-              <input id="entry-file" type="file" accept="image/*,application/pdf,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.eml,.msg" class="hidden" onchange="onEvidencePicked(this)">
-              <span id="entry-file-name" style="font-size:12.5px;color:var(--grey);">No file chosen</span>
+              <button type="button" class="btn" onclick="document.getElementById('capture-file-camera').click()">📷 Take photo</button>
+              <input id="capture-file-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="onCaptureFilePicked(this)">
+              <button type="button" class="btn" onclick="document.getElementById('capture-file').click()">Choose file</button>
+              <input id="capture-file" type="file" accept="image/*,application/pdf,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.eml,.msg" class="hidden" onchange="onCaptureFilePicked(this)">
+              <span id="capture-file-name" style="font-size:12.5px;color:var(--grey);">No file chosen</span>
             </div>
-            <div class="hint">Take a photo of a bill, certificate or weighbridge slip right now, or attach an existing file.</div>
-            <div class="hint" id="entry-extract-status"></div>
+            <div class="hint" style="margin-top:10px;margin-bottom:4px;">Or just describe it in your own words:</div>
+            <textarea id="capture-text" placeholder='e.g. "used 300L diesel Tuesday" or "42.5kg food waste this week"'></textarea>
+            <button type="button" class="btn" style="margin-top:8px;" onclick="analyzeCaptureText()">Read this</button>
           </div>
         </div>
-        <button class="btn primary" onclick="submitEntry()">Log entry</button>
+        <div class="hint" id="capture-status"></div>
+        <div id="capture-candidates"></div>
+      </div>
+
+      <div class="card">
+        <div class="manual-toggle-row" onclick="toggleManualEntry()">
+          <h3 style="margin:0;">Enter one data point manually instead</h3>
+          <span id="manual-toggle-icon">▸ show</span>
+        </div>
+        <div id="manual-entry-body" class="hidden" style="margin-top:14px;">
+          <div class="field-row">
+            <div>
+              <label>Unit</label>
+              <select id="entry-unit"></select>
+            </div>
+            <div>
+              <label>Data point</label>
+              <select id="entry-item"></select>
+            </div>
+            <div>
+              <label>Entry frequency</label>
+              <select id="entry-frequency">
+                <option>Daily</option><option selected>Weekly</option><option>Monthly</option>
+              </select>
+            </div>
+            <div>
+              <label>Date</label>
+              <input id="entry-date" type="date">
+            </div>
+          </div>
+          <div class="field-row">
+            <div>
+              <label>Value</label>
+              <input id="entry-value" type="text" placeholder="e.g. 1 240 kg, 45%, Yes">
+            </div>
+            <div style="grid-column:span 2;">
+              <label>Notes</label>
+              <textarea id="entry-notes" placeholder="Context, evidence location, calculation method..."></textarea>
+            </div>
+          </div>
+          <div class="field-row">
+            <div>
+              <label>Evidence (optional)</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <button type="button" class="btn" onclick="document.getElementById('entry-file-camera').click()">📷 Take photo</button>
+                <input id="entry-file-camera" type="file" accept="image/*" capture="environment" class="hidden" onchange="onEvidencePicked(this)">
+                <button type="button" class="btn" onclick="document.getElementById('entry-file').click()">Choose file</button>
+                <input id="entry-file" type="file" accept="image/*,application/pdf,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.eml,.msg" class="hidden" onchange="onEvidencePicked(this)">
+                <span id="entry-file-name" style="font-size:12.5px;color:var(--grey);">No file chosen</span>
+              </div>
+              <div class="hint" id="entry-extract-status"></div>
+            </div>
+          </div>
+          <button class="btn primary" onclick="submitEntry()">Log entry</button>
+        </div>
       </div>
 
       <div class="card">
@@ -193,10 +266,16 @@
     <!-- ===================== DASHBOARD ===================== -->
     <div class="view" id="view-dashboard">
       <div class="summary-grid" id="summary-grid"></div>
-      <div class="field-row" style="max-width:320px;">
+      <div class="field-row" style="max-width:600px;">
         <div>
           <label>Viewing unit</label>
           <select id="dash-unit-filter" onchange="loadStatus()"></select>
+        </div>
+        <div>
+          <label style="visibility:hidden;">.</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:12.5px;color:#1a1f2b;">
+            <input type="checkbox" id="dash-show-all" onchange="renderStatus()" style="width:auto;"> Show completed &amp; verified too
+          </label>
         </div>
       </div>
       <div class="tabs" id="pillar-tabs"></div>
@@ -239,6 +318,7 @@
             <div><label>Password</label><input id="new-user-password" type="text" placeholder="6+ characters"></div>
             <div><label>Role</label><select id="new-user-role" onchange="toggleUserUnitField()"><option value="site">Site (single unit)</option><option value="admin">Bidvest Admin</option></select></div>
             <div id="new-user-unit-wrap"><label>Assigned unit</label><select id="new-user-unit"></select></div>
+            <div id="new-user-pin-wrap"><label>Site PIN (optional)</label><input id="new-user-pin" type="text" placeholder="4-6 digits, for quick unlock"></div>
           </div>
           <button class="btn primary" onclick="addUser()">Add user</button>
           <span id="user-msg" style="margin-left:10px;font-size:12.5px;"></span>
@@ -280,8 +360,7 @@
           <button class="btn" onclick="downloadReport('xlsx')">Download Excel</button>
         </div>
       </div>
-    </div>
-  </main>
+    </main>
 </div>
 
 <script>
@@ -297,8 +376,26 @@ async function api(path, opts) {
   return res.headers.get('content-type')?.includes('application/json') ? res.json() : res;
 }
 
-function showLogin(){ document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); }
+function showLogin(){ document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); loadPinUnits(); }
 function showApp(){ document.getElementById('login-screen').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
+
+function setLoginMode(mode){
+  document.getElementById('mode-btn-password').classList.toggle('active', mode==='password');
+  document.getElementById('mode-btn-pin').classList.toggle('active', mode==='pin');
+  document.getElementById('login-password-fields').classList.toggle('hidden', mode!=='password');
+  document.getElementById('login-pin-fields').classList.toggle('hidden', mode!=='pin');
+  document.getElementById('login-error').textContent = '';
+}
+
+async function loadPinUnits(){
+  try {
+    const rows = await api('/api/pin-units');
+    const sel = document.getElementById('login-pin-unit');
+    if (!rows.length) { sel.innerHTML = '<option value="">No units with a PIN yet</option>'; return; }
+    sel.innerHTML = '<option value="">Select your unit…</option>' +
+      rows.map(u => `<option value="${u.id}">${u.name} (${u.region_name})</option>`).join('');
+  } catch(e){ /* login screen still fully usable via password */ }
+}
 
 async function doLogin(){
   const username = document.getElementById('login-username').value.trim();
@@ -307,6 +404,22 @@ async function doLogin(){
   errBox.textContent = '';
   try {
     const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, password})});
+    const data = await res.json();
+    if (!res.ok) { errBox.textContent = data.error || 'Login failed'; return; }
+    STATE.role = data.role; STATE.name = data.name; STATE.unit = data.unit;
+    await boot();
+  } catch(e){ errBox.textContent = 'Could not reach server.'; }
+}
+
+async function doPinLogin(){
+  const unitId = document.getElementById('login-pin-unit').value;
+  const pin = document.getElementById('login-pin-code').value.trim();
+  const errBox = document.getElementById('login-error');
+  errBox.textContent = '';
+  if (!unitId) { errBox.textContent = 'Please select your unit.'; return; }
+  if (!pin) { errBox.textContent = 'Please enter your PIN.'; return; }
+  try {
+    const res = await fetch('/api/login/pin', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({unit_id: parseInt(unitId), pin})});
     const data = await res.json();
     if (!res.ok) { errBox.textContent = data.error || 'Login failed'; return; }
     STATE.role = data.role; STATE.name = data.name; STATE.unit = data.unit;
@@ -325,7 +438,7 @@ function setNav(view){
 }
 
 function renderNav(){
-  const tabs = [{id:'entry', label:'Log entry'}, {id:'dashboard', label:'Dashboard'}];
+  const tabs = [{id:'entry', label:'Add evidence'}, {id:'dashboard', label:'Dashboard'}];
   if (STATE.role === 'admin') tabs.push({id:'admin', label:'Bidvest Admin'});
   document.getElementById('navtabs').innerHTML = tabs.map(t =>
     `<div class="navtab" data-view="${t.id}" onclick="setNav('${t.id}')">${t.label}</div>`).join('');
@@ -340,7 +453,9 @@ async function boot(){
   STATE.meta = await api('/api/meta');
   await Promise.all([loadChecklist(), loadUnits()]);
   populateEntryForm();
-  document.getElementById('entry-date').value = new Date().toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('entry-date').value = today;
+  document.getElementById('capture-date').value = today;
   setNav('entry');
 }
 
@@ -348,9 +463,13 @@ async function loadChecklist(){ STATE.items = await api('/api/checklist'); }
 async function loadUnits(){ STATE.units = await api('/api/units'); }
 
 function populateEntryForm(){
+  const unitOptions = STATE.units.map(u => `<option value="${u.id}">${u.name} (${u.category}, ${u.region_name})</option>`).join('');
   const unitSel = document.getElementById('entry-unit');
-  unitSel.innerHTML = STATE.units.map(u => `<option value="${u.id}">${u.name} (${u.category}, ${u.region_name})</option>`).join('');
+  unitSel.innerHTML = unitOptions;
   if (STATE.unit) unitSel.value = STATE.unit.id;
+  const captureUnitSel = document.getElementById('capture-unit');
+  captureUnitSel.innerHTML = unitOptions;
+  if (STATE.unit) captureUnitSel.value = STATE.unit.id;
 
   const itemSel = document.getElementById('entry-item');
   const byPillar = {};
@@ -359,6 +478,136 @@ function populateEntryForm(){
     `<optgroup label="${grp}">${items.map(i => `<option value="${i.id}">${i.id} — ${i.data_point}</option>`).join('')}</optgroup>`
   ).join('');
 }
+
+function toggleManualEntry(){
+  const body = document.getElementById('manual-entry-body');
+  const icon = document.getElementById('manual-toggle-icon');
+  const show = body.classList.contains('hidden');
+  body.classList.toggle('hidden', !show);
+  icon.textContent = show ? '▾ hide' : '▸ show';
+}
+
+// ---------------- Central capture (Add evidence) ----------------
+
+let selectedCaptureFile = null;
+
+function onCaptureFilePicked(input){
+  if (!input.files.length) return;
+  selectedCaptureFile = input.files[0];
+  const other = input.id === 'capture-file' ? document.getElementById('capture-file-camera') : document.getElementById('capture-file');
+  other.value = '';
+  document.getElementById('capture-file-name').textContent = selectedCaptureFile.name;
+  runCapture({ file: selectedCaptureFile, sourceName: selectedCaptureFile.name });
+}
+
+function analyzeCaptureText(){
+  const text = document.getElementById('capture-text').value.trim();
+  if (!text) return;
+  runCapture({ text, sourceName: 'typed note' });
+}
+
+async function runCapture({ file, text }){
+  const statusEl = document.getElementById('capture-status');
+  const candBox = document.getElementById('capture-candidates');
+  statusEl.textContent = 'Reading…';
+  statusEl.style.color = 'var(--grey)';
+  candBox.innerHTML = '';
+  const fd = new FormData();
+  if (file) fd.append('file', file);
+  if (text) fd.append('text', text);
+  try {
+    const res = await fetch('/api/extract', { method: 'POST', body: fd });
+    if (res.status === 401) { showLogin(); return; }
+    const data = await res.json();
+    if (!res.ok) {
+      statusEl.textContent = data.error || 'Could not read this.';
+      statusEl.style.color = 'var(--red)';
+      return;
+    }
+    renderCaptureCandidates(data);
+  } catch(e) {
+    statusEl.textContent = 'Could not reach the server.';
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+function renderCaptureCandidates(data){
+  const statusEl = document.getElementById('capture-status');
+  const candBox = document.getElementById('capture-candidates');
+  const candidates = data.candidates || [];
+  if (data.entry_date) document.getElementById('capture-date').value = data.entry_date;
+
+  if (!candidates.length) {
+    statusEl.textContent = data.message || "Read it, but couldn't confidently match a data point — try Enter manually below.";
+    statusEl.style.color = '#b45309';
+    candBox.innerHTML = '';
+    return;
+  }
+  statusEl.textContent = `Found ${candidates.length} possible match${candidates.length>1?'es':''} — review, adjust and save the ones that are right.`;
+  statusEl.style.color = '#146c38';
+
+  candBox.innerHTML = candidates.map((c, idx) => `
+    <div class="candidate-row" data-idx="${idx}">
+      <input type="checkbox" class="cand-check" id="cand-check-${idx}" ${c.value_confidence==='high' ? 'checked' : ''} style="width:auto;">
+      <div class="cand-main">
+        <div class="name"><span class="cat-group-dot cat-${(c.category_group||c.category||'Other').replace(/[^A-Za-z]/g,'')}"></span>${c.id||c.item_id} — ${c.data_point}</div>
+        <div class="meta">${c.pillar} › ${c.category} · <span class="conf-${c.value_confidence||'medium'}">${c.value_confidence==='high'?'high confidence':'check this one'}</span></div>
+      </div>
+      <input type="text" class="cand-value" id="cand-value-${idx}" value="${(c.value_text||'').replace(/"/g,'&quot;')}">
+    </div>`).join('') +
+    `<button class="btn primary" style="margin-top:6px;" onclick="saveCaptureCandidates()">Save selected entries</button>`;
+
+  window._captureData = data;
+}
+
+async function saveCaptureCandidates(){
+  const data = window._captureData;
+  if (!data) return;
+  const unitId = document.getElementById('capture-unit').value;
+  const frequency = document.getElementById('capture-frequency').value;
+  const entryDate = document.getElementById('capture-date').value;
+  const notes = data.notes || '';
+  const rows = document.querySelectorAll('#capture-candidates .candidate-row');
+  let saved = 0, failed = 0;
+  for (const row of rows) {
+    const idx = row.dataset.idx;
+    if (!document.getElementById(`cand-check-${idx}`).checked) continue;
+    const candidate = data.candidates[idx];
+    const value = document.getElementById(`cand-value-${idx}`).value;
+    const fd = new FormData();
+    fd.append('unit_id', unitId);
+    fd.append('item_id', candidate.item_id);
+    fd.append('frequency', frequency);
+    fd.append('entry_date', entryDate);
+    fd.append('value_text', value);
+    fd.append('notes', notes);
+    if (selectedCaptureFile) fd.append('file', selectedCaptureFile);
+    try { await api('/api/entry', { method: 'POST', body: fd }); saved++; }
+    catch(e) { failed++; }
+  }
+  const confirmBox = document.getElementById('entry-confirm');
+  const errBox = document.getElementById('entry-error');
+  confirmBox.classList.remove('show'); errBox.classList.remove('show');
+  if (saved) {
+    confirmBox.textContent = `Saved ${saved} entr${saved===1?'y':'ies'}${failed? `, ${failed} failed` : ''}.`;
+    confirmBox.classList.add('show');
+  }
+  if (failed && !saved) {
+    errBox.textContent = `Could not save ${failed} entr${failed===1?'y':'ies'}.`;
+    errBox.classList.add('show');
+  }
+  document.getElementById('capture-candidates').innerHTML = '';
+  document.getElementById('capture-status').textContent = '';
+  document.getElementById('capture-text').value = '';
+  document.getElementById('capture-file').value = '';
+  document.getElementById('capture-file-camera').value = '';
+  document.getElementById('capture-file-name').textContent = 'No file chosen';
+  selectedCaptureFile = null;
+  window._captureData = null;
+  loadRecentEntries();
+}
+
+// ---------------- Manual single-item entry (unchanged behaviour) ----------------
 
 let selectedEvidenceInput = null;
 function onEvidencePicked(input){
@@ -492,23 +741,35 @@ function statusClass(s){ return 'status-' + (s||'Not started').replace(/[^A-Za-z
 
 function renderStatus(){
   const q = document.getElementById('search-box').value.toLowerCase();
+  const showAll = document.getElementById('dash-show-all').checked;
   let items = STATE.statusItems;
   if (STATE.pillar !== 'All') items = items.filter(i => i.pillar === STATE.pillar);
   if (q) items = items.filter(i => (i.data_point+' '+i.category+' '+i.id).toLowerCase().includes(q));
+  if (!showAll) items = items.filter(i => ['Not started','In progress'].includes(i.status_summary.status));
   const unitId = document.getElementById('dash-unit-filter').value;
 
-  const byCategory = {};
-  items.forEach(i => { (byCategory[i.category] = byCategory[i.category]||[]).push(i); });
+  const byGroup = {};
+  items.forEach(i => { const g = i.category_group || i.category; (byGroup[g] = byGroup[g]||[]).push(i); });
+  const groupOrder = ['Waste','Energy','Water','People','Safety','Compliance'];
+  const orderedGroups = Object.keys(byGroup).sort((a,b) => {
+    const ia = groupOrder.indexOf(a), ib = groupOrder.indexOf(b);
+    return (ia===-1?99:ia) - (ib===-1?99:ib);
+  });
 
   const container = document.getElementById('status-container');
-  if (!items.length) { container.innerHTML = '<p style="color:#6b7280;">No matching data points.</p>'; return; }
+  if (!items.length) {
+    container.innerHTML = showAll
+      ? '<p style="color:#6b7280;">No matching data points.</p>'
+      : '<p style="color:#146c38;">Nothing outstanding here — tick "Show completed &amp; verified too" to see everything.</p>';
+    return;
+  }
 
-  container.innerHTML = Object.entries(byCategory).map(([cat, list]) => `
+  container.innerHTML = orderedGroups.map(group => `
     <div class="card">
-      <h3>${cat}</h3>
+      <h3><span class="cat-group-dot cat-${group.replace(/[^A-Za-z]/g,'')}"></span>${group}</h3>
       <table class="datatable">
         <tr><th>ID</th><th>Data point</th><th>Status</th><th>Value</th><th>Evidence</th>${STATE.role==='admin' && unitId ? '<th>Actions</th>' : ''}</tr>
-        ${list.map(i => rowHtml(i, unitId)).join('')}
+        ${byGroup[group].map(i => rowHtml(i, unitId)).join('')}
       </table>
     </div>`).join('');
 }
@@ -582,15 +843,17 @@ async function addUnit(){
 }
 
 function toggleUserUnitField(){
-  document.getElementById('new-user-unit-wrap').classList.toggle('hidden', document.getElementById('new-user-role').value === 'admin');
+  const isAdmin = document.getElementById('new-user-role').value === 'admin';
+  document.getElementById('new-user-unit-wrap').classList.toggle('hidden', isAdmin);
+  document.getElementById('new-user-pin-wrap').classList.toggle('hidden', isAdmin);
 }
 
 async function loadUsersAdmin(){
   document.getElementById('new-user-unit').innerHTML = STATE.units.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
   const rows = await api('/api/users');
   const table = document.getElementById('users-table');
-  table.innerHTML = '<tr><th>Name</th><th>Username</th><th>Role</th><th>Unit</th></tr>' +
-    rows.map(r => `<tr><td>${r.name}</td><td>${r.username}</td><td>${r.role === 'admin' ? 'Bidvest Admin' : 'Site'}</td><td>${r.unit_name||'—'}</td></tr>`).join('');
+  table.innerHTML = '<tr><th>Name</th><th>Username</th><th>Role</th><th>Unit</th><th>PIN</th></tr>' +
+    rows.map(r => `<tr><td>${r.name}</td><td>${r.username}</td><td>${r.role === 'admin' ? 'Bidvest Admin' : 'Site'}</td><td>${r.unit_name||'—'}</td><td>${r.has_pin ? 'Set' : '—'}</td></tr>`).join('');
 }
 
 async function addUser(){
@@ -600,12 +863,13 @@ async function addUser(){
     password: document.getElementById('new-user-password').value,
     role: document.getElementById('new-user-role').value,
     unit_id: parseInt(document.getElementById('new-user-unit').value) || null,
+    pin: document.getElementById('new-user-pin').value.trim(),
   };
   const msg = document.getElementById('user-msg');
   try {
     await api('/api/users', {method:'POST', body: JSON.stringify(payload)});
     msg.textContent = 'User added.'; msg.style.color = 'var(--green)';
-    document.getElementById('new-user-name').value = ''; document.getElementById('new-user-username').value = ''; document.getElementById('new-user-password').value = '';
+    document.getElementById('new-user-name').value = ''; document.getElementById('new-user-username').value = ''; document.getElementById('new-user-password').value = ''; document.getElementById('new-user-pin').value = '';
     await loadUsersAdmin();
   } catch(e){ msg.textContent = e.message; msg.style.color = 'var(--red)'; }
 }
