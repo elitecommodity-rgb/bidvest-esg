@@ -1,9 +1,8 @@
-hello world test
-line two"""
+"""
 Evidence auto-read: pulls a suggested value, date and notes out of an
 uploaded photo / PDF / document so the capture form can pre-fill itself.
 
-Best-effort only â every result is meant to be reviewed by the person
+Best-effort only — every result is meant to be reviewed by the person
 before they save the entry, never trusted blind. Nothing here should ever
 raise past extract_evidence(); failures degrade to "couldn't read it".
 """
@@ -225,8 +224,8 @@ def build_notes(text, filename):
     cleaned = re.sub(r"\s+", " ", text).strip()
     if not cleaned:
         return None
-    snippet = cleaned[:280] + ("â¦" if len(cleaned) > 280 else "")
-    return f"Auto-extracted from {filename}: â{snippet}â"
+    snippet = cleaned[:280] + ("…" if len(cleaned) > 280 else "")
+    return f"Auto-extracted from {filename}: “{snippet}”"
 
 
 # --------------------------------------------------------------------- entry
@@ -242,7 +241,7 @@ def extract_evidence(file_bytes, filename, item):
     if not text or not text.strip():
         return {
             "ok": False,
-            "message": "Couldn't read any text from this file â please fill in the fields manually.",
+            "message": "Couldn't read any text from this file — please fill in the fields manually.",
             "value_text": None,
             "value_confidence": None,
             "entry_date": None,

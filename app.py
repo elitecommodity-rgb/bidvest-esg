@@ -10,6 +10,8 @@ from io import BytesIO
 from flask import Flask, g, jsonify, request, send_file, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from extract import extract_evidence
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "bidvest_esg.db"))
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(BASE_DIR, "data", "uploads"))
@@ -624,6 +626,45 @@ def add_entry():
         "evidence_saved": evidence_saved,
         "status": status,
     })
+
+
+@app.route("/api/extract", methods=["POST"])
+def extract_from_evidence():
+    """Reads an uploaded evidence file (photo/PDF/doc) and suggests a value,
+    date and notes for the currently-selected data point. Best-effort — the
+    caller always treats the result as a suggestion to review, not a fact."""
+    user, err = require_login()
+    if err:
+        return err
+    if "file" not in request.files or not request.files["file"].filename:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "Unsupported file type"}), 400
+
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_UPLOAD_MB * 1024 * 1024:
+        return jsonify({"error": "File too large"}), 400
+
+    item = None
+    item_id = request.form.get("item_id")
+    if item_id:
+        db = get_db()
+        row = db.execute("SELECT * FROM checklist_items WHERE id=?", (item_id,)).fetchone()
+        if row:
+            item = dict(row)
+
+    try:
+        result = extract_evidence(file_bytes, file.filename, item)
+    except Exception:
+        result = {
+            "ok": False,
+            "message": "Couldn't process this file — please fill in the fields manually.",
+            "value_text": None, "value_confidence": None, "entry_date": None,
+            "notes": None, "raw_text": "",
+        }
+    return jsonify(result)
 
 
 @app.route("/api/entries")
